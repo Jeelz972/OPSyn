@@ -1,5 +1,4 @@
 # OPSyn
-Plateform Basket Poussez
 basketball-tactics-platform/
 ├── frontend/
 │   ├── src/
