@@ -1,0 +1,444 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Stage, Layer, Circle, Line, Rect, Text, Arrow, Group } from 'react-konva';
+import { ChevronDown, Save, Download, Share2, Trash2, Move, Users, ArrowRight, Type, Undo, Redo } from 'lucide-react';
+
+// Configuration du terrain
+const COURT_WIDTH = 800;
+const COURT_HEIGHT = 600;
+const PLAYER_RADIUS = 20;
+
+// Composant Principal
+function BasketballTacticsEditor() {
+  const [selectedTool, setSelectedTool] = useState('move');
+  const [elements, setElements] = useState([]);
+  const [selectedElement, setSelectedElement] = useState(null);
+  const [history, setHistory] = useState([[]]);
+  const [historyStep, setHistoryStep] = useState(0);
+  const [playName, setPlayName] = useState('Nouveau Play');
+  const [savedPlays, setSavedPlays] = useState([]);
+  const stageRef = useRef();
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawingPoints, setDrawingPoints] = useState([]);
+
+  // Charger les plays sauvegardés
+  useEffect(() => {
+    const saved = localStorage.getItem('basketballPlays');
+    if (saved) {
+      setSavedPlays(JSON.parse(saved));
+    }
+  }, []);
+
+  // Gestion de l'historique
+  const saveToHistory = (newElements) => {
+    const newHistory = history.slice(0, historyStep + 1);
+    newHistory.push(newElements);
+    setHistory(newHistory);
+    setHistoryStep(newHistory.length - 1);
+  };
+
+  // Ajouter un joueur
+  const addPlayer = (team, number = 1) => {
+    const newPlayer = {
+      id: Date.now(),
+      type: 'player',
+      team: team,
+      number: number,
+      x: team === 'offense' ? 200 : 600,
+      y: 300 + (elements.filter(e => e.type === 'player' && e.team === team).length * 60),
+    };
+    const newElements = [...elements, newPlayer];
+    setElements(newElements);
+    saveToHistory(newElements);
+  };
+
+  // Ajouter le ballon
+  const addBall = () => {
+    if (elements.find(e => e.type === 'ball')) return;
+    const newBall = {
+      id: Date.now(),
+      type: 'ball',
+      x: 400,
+      y: 300,
+    };
+    const newElements = [...elements, newBall];
+    setElements(newElements);
+    saveToHistory(newElements);
+  };
+
+  // Gestion du clic sur le canvas
+  const handleStageClick = (e) => {
+    const clickedOnEmpty = e.target === e.target.getStage();
+    
+    if (clickedOnEmpty) {
+      setSelectedElement(null);
+      
+      if (selectedTool === 'arrow' && !isDrawing) {
+        // Commencer à dessiner une flèche
+        const pos = e.target.getStage().getPointerPosition();
+        setIsDrawing(true);
+        setDrawingPoints([pos.x, pos.y, pos.x, pos.y]);
+      }
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDrawing) return;
+    
+    const stage = e.target.getStage();
+    const point = stage.getPointerPosition();
+    const newPoints = [drawingPoints[0], drawingPoints[1], point.x, point.y];
+    setDrawingPoints(newPoints);
+  };
+
+  const handleMouseUp = () => {
+    if (!isDrawing || drawingPoints.length < 4) return;
+    
+    const newArrow = {
+      id: Date.now(),
+      type: 'arrow',
+      points: drawingPoints,
+    };
+    
+    const newElements = [...elements, newArrow];
+    setElements(newElements);
+    saveToHistory(newElements);
+    
+    setIsDrawing(false);
+    setDrawingPoints([]);
+  };
+
+  // Sauvegarder le play
+  const savePlay = () => {
+    const playData = {
+      id: Date.now(),
+      name: playName,
+      elements: elements,
+      timestamp: new Date().toISOString(),
+    };
+    
+    const newSavedPlays = [...savedPlays, playData];
+    setSavedPlays(newSavedPlays);
+    localStorage.setItem('basketballPlays', JSON.stringify(newSavedPlays));
+  };
+
+  // Charger un play
+  const loadPlay = (play) => {
+    setElements(play.elements);
+    setPlayName(play.name);
+    saveToHistory(play.elements);
+  };
+
+  // Exporter en PNG
+  const exportPNG = () => {
+    const uri = stageRef.current.toDataURL();
+    const link = document.createElement('a');
+    link.download = `${playName}.png`;
+    link.href = uri;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Annuler/Refaire
+  const undo = () => {
+    if (historyStep > 0) {
+      setHistoryStep(historyStep - 1);
+      setElements(history[historyStep - 1]);
+    }
+  };
+
+  const redo = () => {
+    if (historyStep < history.length - 1) {
+      setHistoryStep(historyStep + 1);
+      setElements(history[historyStep + 1]);
+    }
+  };
+
+  // Réinitialiser
+  const clearCanvas = () => {
+    setElements([]);
+    saveToHistory([]);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold text-gray-900">Basketball Tactics Editor</h1>
+            <input
+              type="text"
+              value={playName}
+              onChange={(e) => setPlayName(e.target.value)}
+              className="px-3 py-1 border rounded-lg"
+              placeholder="Nom du play"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={undo}
+              className="p-2 hover:bg-gray-100 rounded"
+              disabled={historyStep <= 0}
+            >
+              <Undo className="w-5 h-5" />
+            </button>
+            <button
+              onClick={redo}
+              className="p-2 hover:bg-gray-100 rounded"
+              disabled={historyStep >= history.length - 1}
+            >
+              <Redo className="w-5 h-5" />
+            </button>
+            <button
+              onClick={savePlay}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              Sauvegarder
+            </button>
+            <button
+              onClick={exportPNG}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Exporter PNG
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex h-[calc(100vh-64px)]">
+        {/* Sidebar - Outils */}
+        <div className="w-64 bg-white shadow-lg">
+          <div className="p-4">
+            <h3 className="text-sm font-semibold text-gray-500 mb-3">OUTILS</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => setSelectedTool('move')}
+                className={`w-full p-3 text-left rounded-lg flex items-center gap-3 ${
+                  selectedTool === 'move' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
+                }`}
+              >
+                <Move className="w-5 h-5" />
+                Déplacer
+              </button>
+              <button
+                onClick={() => setSelectedTool('arrow')}
+                className={`w-full p-3 text-left rounded-lg flex items-center gap-3 ${
+                  selectedTool === 'arrow' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
+                }`}
+              >
+                <ArrowRight className="w-5 h-5" />
+                Flèche
+              </button>
+            </div>
+
+            <h3 className="text-sm font-semibold text-gray-500 mb-3 mt-6">ÉLÉMENTS</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => addPlayer('offense', elements.filter(e => e.type === 'player' && e.team === 'offense').length + 1)}
+                className="w-full p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-3"
+              >
+                <Users className="w-5 h-5" />
+                Joueur Attaque
+              </button>
+              <button
+                onClick={() => addPlayer('defense', elements.filter(e => e.type === 'player' && e.team === 'defense').length + 1)}
+                className="w-full p-3 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-3"
+              >
+                <Users className="w-5 h-5" />
+                Joueur Défense
+              </button>
+              <button
+                onClick={addBall}
+                className="w-full p-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-3"
+              >
+                <Circle className="w-5 h-5" />
+                Ballon
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <button
+                onClick={clearCanvas}
+                className="w-full p-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex items-center gap-3"
+              >
+                <Trash2 className="w-5 h-5" />
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+
+          {/* Plays sauvegardés */}
+          <div className="p-4 border-t">
+            <h3 className="text-sm font-semibold text-gray-500 mb-3">PLAYS SAUVEGARDÉS</h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {savedPlays.map(play => (
+                <button
+                  key={play.id}
+                  onClick={() => loadPlay(play)}
+                  className="w-full p-2 text-left text-sm bg-gray-50 rounded hover:bg-gray-100"
+                >
+                  {play.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Canvas principal */}
+        <div className="flex-1 bg-gray-50 flex items-center justify-center p-8">
+          <div className="bg-white rounded-lg shadow-xl">
+            <Stage
+              width={COURT_WIDTH}
+              height={COURT_HEIGHT}
+              ref={stageRef}
+              onClick={handleStageClick}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+            >
+              <Layer>
+                {/* Terrain de basketball */}
+                <Rect
+                  x={0}
+                  y={0}
+                  width={COURT_WIDTH}
+                  height={COURT_HEIGHT}
+                  fill="#f4a460"
+                  stroke="#8B4513"
+                  strokeWidth={3}
+                />
+                
+                {/* Ligne médiane */}
+                <Line
+                  points={[COURT_WIDTH/2, 0, COURT_WIDTH/2, COURT_HEIGHT]}
+                  stroke="#8B4513"
+                  strokeWidth={2}
+                />
+                
+                {/* Cercle central */}
+                <Circle
+                  x={COURT_WIDTH/2}
+                  y={COURT_HEIGHT/2}
+                  radius={60}
+                  stroke="#8B4513"
+                  strokeWidth={2}
+                />
+                
+                {/* Paniers */}
+                <Circle
+                  x={100}
+                  y={COURT_HEIGHT/2}
+                  radius={15}
+                  stroke="#FF6600"
+                  strokeWidth={3}
+                  fill="transparent"
+                />
+                <Circle
+                  x={COURT_WIDTH - 100}
+                  y={COURT_HEIGHT/2}
+                  radius={15}
+                  stroke="#FF6600"
+                  strokeWidth={3}
+                  fill="transparent"
+                />
+
+                {/* Éléments du play */}
+                {elements.map((element) => {
+                  if (element.type === 'player') {
+                    return (
+                      <Group
+                        key={element.id}
+                        x={element.x}
+                        y={element.y}
+                        draggable={selectedTool === 'move'}
+                        onDragEnd={(e) => {
+                          const newElements = elements.map(el => 
+                            el.id === element.id 
+                              ? { ...el, x: e.target.x(), y: e.target.y() }
+                              : el
+                          );
+                          setElements(newElements);
+                          saveToHistory(newElements);
+                        }}
+                        onClick={() => setSelectedElement(element)}
+                      >
+                        <Circle
+                          radius={PLAYER_RADIUS}
+                          fill={element.team === 'offense' ? '#3B82F6' : '#EF4444'}
+                          stroke={selectedElement?.id === element.id ? '#000' : 'transparent'}
+                          strokeWidth={2}
+                        />
+                        <Text
+                          x={-8}
+                          y={-8}
+                          text={element.number.toString()}
+                          fontSize={16}
+                          fontStyle="bold"
+                          fill="white"
+                        />
+                      </Group>
+                    );
+                  } else if (element.type === 'ball') {
+                    return (
+                      <Circle
+                        key={element.id}
+                        x={element.x}
+                        y={element.y}
+                        radius={10}
+                        fill="#FF8C00"
+                        stroke="#FF6600"
+                        strokeWidth={2}
+                        draggable={selectedTool === 'move'}
+                        onDragEnd={(e) => {
+                          const newElements = elements.map(el => 
+                            el.id === element.id 
+                              ? { ...el, x: e.target.x(), y: e.target.y() }
+                              : el
+                          );
+                          setElements(newElements);
+                          saveToHistory(newElements);
+                        }}
+                        onClick={() => setSelectedElement(element)}
+                      />
+                    );
+                  } else if (element.type === 'arrow') {
+                    return (
+                      <Arrow
+                        key={element.id}
+                        points={element.points}
+                        stroke="#000"
+                        strokeWidth={3}
+                        fill="#000"
+                        onClick={() => {
+                          if (selectedTool === 'move') {
+                            setSelectedElement(element);
+                          }
+                        }}
+                      />
+                    );
+                  }
+                  return null;
+                })}
+
+                {/* Flèche en cours de dessin */}
+                {isDrawing && drawingPoints.length >= 4 && (
+                  <Arrow
+                    points={drawingPoints}
+                    stroke="#666"
+                    strokeWidth={2}
+                    fill="#666"
+                    dash={[5, 5]}
+                  />
+                )}
+              </Layer>
+            </Stage>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default BasketballTacticsEditor;
