@@ -1,3 +1,6 @@
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-blue-50 p-4 rounded-lg text-center">
+            <div className="text-3xl font-bold text-blue-600"
 // app.js - Application Complète Stats Basketball
 const { useState, useEffect } = React;
 
