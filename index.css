@@ -1,0 +1,51 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #f9fafb;
+}
+
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input, select {
+  outline: none;
+  transition: border 0.2s ease-in-out;
+}
+
+input:focus, select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+}
+
+/* Table styling for better readability */
+table th, table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+table th {
+  font-weight: 600;
+}
+
+table tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+/* Smooth hover for cards */
+.bg-white:hover {
+  transition: transform 0.2s ease;
+  transform: scale(1.01);
+}
