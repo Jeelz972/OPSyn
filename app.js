@@ -1,6 +1,4 @@
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 p-4 rounded-lg text-center">
-            <div className="text-3xl font-bold text-blue-600">
+import React from 'react';
 // app.js - Application Complète Stats Basketball
 const { useState, useEffect } = React;
 
@@ -131,8 +129,7 @@ function BasketballStatsApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-blue-50">
-      {/* Header avec Navigation */}
-      <div className="bg-gradient-to-r from-orange-600 to-blue-600 p-4 text-white shadow-lg">
+           <div className="bg-gradient-to-r from-orange-600 to-blue-600 p-4 text-white shadow-lg">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold mb-4">🏀 Stats Basketball Pro</h1>
           <div className="flex flex-wrap gap-2">
@@ -164,7 +161,7 @@ function BasketballStatsApp() {
         </div>
       </div>
 
-      {/* Contenu Principal */}
+     
       <div className="p-4">
         {activeModule === 'shooting' && (
           <ShootingModule 
@@ -801,7 +798,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
   return (
     <div className="max-w-6xl mx-auto">
       <div className="bg-white rounded-lg shadow-lg p-4">
-        {/* En-tête du match */}
+       
         <div className="mb-4">
           <h2 className="text-2xl font-bold text-gray-800 mb-3">🏀 Match en Cours</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -839,7 +836,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </div>
         </div>
 
-        {/* Score Total */}
+      
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="bg-blue-600 text-white p-4 rounded-lg text-center">
             <div className="text-sm font-semibold">NOUS</div>
@@ -851,7 +848,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </div>
         </div>
 
-        {/* Onglets Quarts-Temps */}
+
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           {currentMatchStats.quartersData.map((q, idx) => (
             <button
@@ -876,7 +873,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           )}
         </div>
 
-        {/* Sélection Joueur */}
+
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">Joueur actif</label>
           <select
@@ -891,7 +888,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </select>
         </div>
 
-        {/* Boutons d'Actions - Section NOUS */}
+
         <div className="mb-4">
           <h3 className="font-bold text-blue-600 mb-2">🏀 Actions NOUS</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -958,7 +955,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </div>
         </div>
 
-        {/* Boutons d'Actions - Section ADVERSAIRE */}
+
         <div className="mb-4">
           <h3 className="font-bold text-red-600 mb-2">⚔️ Actions ADVERSAIRE</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1001,7 +998,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </div>
         </div>
 
-        {/* Modal Tir Loupé */}
+
         {showMissedShotModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
@@ -1043,8 +1040,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </div>
         )}
 
-        {/* Modal Conséquence */}
-        {showActionModal && (
+		 {showActionModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4">
@@ -1111,8 +1107,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
             </div>
           </div>
         )}
-
-        {/* Historique des Actions */}
         <div className="bg-gray-50 rounded-lg p-4 mb-4">
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-bold text-gray-800">📋 Actions Q{activeQuarter.quarter}</h3>
@@ -1158,7 +1152,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </div>
         </div>
 
-        {/* Bouton Sauvegarder et Récapitulatif */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
             onClick={() => setShowRecap(true)}
@@ -1174,7 +1167,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
           </button>
         </div>
 
-        {/* Modal Récapitulatif */}
         {showRecap && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg p-6 max-w-4xl w-full my-8">
@@ -1193,7 +1185,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                 </button>
               </div>
 
-              {/* Score Final */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-blue-100 p-4 rounded-lg text-center">
                   <div className="text-sm font-semibold text-blue-800">NOUS</div>
@@ -1205,7 +1196,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                 </div>
               </div>
 
-              {/* Scores par Quart-Temps */}
               <div className="mb-6">
                 <h4 className="font-bold text-gray-700 mb-3">Scores par Quart-Temps</h4>
                 <div className="grid grid-cols-4 gap-2">
@@ -1220,13 +1210,12 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                 </div>
               </div>
 
-              {/* Statistiques Détaillées */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* NOUS */}
+ 
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h4 className="font-bold text-blue-800 mb-3 text-lg">🏀 Notre Équipe</h4>
                   <div className="space-y-3 text-sm">
-                    {/* Tirs */}
+
                     <div className="border-b pb-2">
                       <div className="font-bold text-gray-700 mb-1">🎯 Tirs</div>
                       <div className="flex justify-between ml-2">
@@ -1258,7 +1247,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                       </div>
                     </div>
 
-                    {/* Rebonds Offensifs */}
                     <div className="border-b pb-2">
                       <div className="flex justify-between">
                         <span className="font-bold text-gray-700">🔄 Rebonds Offensifs:</span>
@@ -1294,7 +1282,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                       )}
                     </div>
 
-                    {/* Pertes de Balle */}
+
                     <div className="border-b pb-2">
                       <div className="flex justify-between">
                         <span className="font-bold text-gray-700">⚠️ Pertes de Balle:</span>
@@ -1342,7 +1330,6 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                       )}
                     </div>
 
-                    {/* Interceptions */}
                     <div className="border-b pb-2">
                       <div className="flex justify-between">
                         <span className="font-bold text-gray-700">🎯 Interceptions:</span>
@@ -1378,7 +1365,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                       )}
                     </div>
 
-                    {/* Autres */}
+
                     <div>
                       <div className="flex justify-between">
                         <span className="text-gray-700">Paniers Faciles Loupés:</span>
@@ -1392,11 +1379,11 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                   </div>
                 </div>
 
-                {/* ADVERSAIRE */}
+
                 <div className="bg-red-50 p-4 rounded-lg">
                   <h4 className="font-bold text-red-800 mb-3 text-lg">⚔️ Équipe Adverse</h4>
                   <div className="space-y-3 text-sm">
-                    {/* Tirs */}
+        
                     <div className="border-b pb-2">
                       <div className="font-bold text-gray-700 mb-1">🎯 Tirs</div>
                       <div className="flex justify-between ml-2">
@@ -1419,7 +1406,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                       </div>
                     </div>
 
-                    {/* Rebonds Offensifs */}
+
                     <div className="border-b pb-2">
                       <div className="flex justify-between">
                         <span className="font-bold text-gray-700">🔄 Rebonds Offensifs:</span>
@@ -1455,7 +1442,7 @@ function TeamStatsModule({ teamStats, currentMatchStats, setCurrentMatchStats, s
                       )}
                     </div>
 
-                    {/* Autres */}
+ 
                     <div>
                       <div className="flex justify-between">
                         <span className="text-gray-700">Fautes:</span>
@@ -1621,7 +1608,7 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* Statistiques Globales */}
+
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-3xl font-bold text-gray-800">📈 Statistiques Globales</h2>
@@ -1638,11 +1625,10 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
 
         </div>
 
-        {/* Statistiques avec conséquences détaillées */}
         <div className="mb-6">
           <h3 className="text-xl font-bold text-gray-700 mb-4">📊 Statistiques Détaillées avec Conséquences</h3>
           
-          {/* Rebonds Offensifs */}
+   
           <div className="bg-cyan-50 p-4 rounded-lg mb-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold text-gray-800">🔄 Rebonds Offensifs NOUS</span>
@@ -1670,7 +1656,6 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
             )}
           </div>
 
-          {/* Pertes de Balle */}
           <div className="bg-orange-50 p-4 rounded-lg mb-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold text-gray-800">⚠️ Pertes de Balle</span>
@@ -1706,7 +1691,7 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
             )}
           </div>
 
-          {/* Interceptions */}
+
           <div className="bg-purple-50 p-4 rounded-lg mb-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold text-gray-800">🎯 Interceptions</span>
@@ -1734,7 +1719,6 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
             )}
           </div>
 
-          {/* Rebonds Offensifs Adversaires */}
           <div className="bg-rose-50 p-4 rounded-lg mb-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold text-gray-800">🔄 Rebonds Offensifs ADVERSAIRE</span>
@@ -1763,7 +1747,6 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
           </div>
         </div>
 
-        {/* Statistiques de base */}
         <h3 className="text-xl font-bold text-gray-700 mb-4">📈 Statistiques Générales</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
           <div className="bg-blue-50 p-4 rounded-lg text-center">
@@ -1815,7 +1798,7 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
         </div>
       </div>
 
-      {/* Liste de tous les matchs */}
+
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">
@@ -1922,7 +1905,7 @@ function HistoryModule({ shots, teamStats, exportToCSV, saveTeamStats }) {
         )}
       </div>
 
-      {/* Historique par Jour */}
+
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">📅 Matchs par Date</h2>
