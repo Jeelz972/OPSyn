@@ -1,444 +1,381 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Circle, Line, Rect, Text, Arrow, Group } from 'react-konva';
-import { ChevronDown, Save, Download, Share2, Trash2, Move, Users, ArrowRight, Type, Undo, Redo } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Trash2, BarChart3 } from 'lucide-react';
 
-// Configuration du terrain
-const COURT_WIDTH = 800;
-const COURT_HEIGHT = 600;
-const PLAYER_RADIUS = 20;
+const ZONES = [
+  { id: 'gauche_0', name: 'Gauche 0°', color: '#3b82f6' },
+  { id: 'degre_0', name: '0°', color: '#8b5cf6' },
+  { id: 'droit_0', name: 'Droit 0°', color: '#ec4899' },
+  { id: 'gauche_45', name: 'Gauche 45°', color: '#10b981' },
+  { id: 'droit_45', name: 'Droit 45°', color: '#f59e0b' },
+  { id: 'gauche_70', name: 'Gauche 70°', color: '#06b6d4' },
+  { id: 'droit_70', name: 'Droit 70°', color: '#ef4444' },
+  { id: 'axe', name: 'Axe', color: '#6366f1' }
+];
 
-// Composant Principal
-function BasketballTacticsEditor() {
-  const [selectedTool, setSelectedTool] = useState('move');
-  const [elements, setElements] = useState([]);
-  const [selectedElement, setSelectedElement] = useState(null);
-  const [history, setHistory] = useState([[]]);
-  const [historyStep, setHistoryStep] = useState(0);
-  const [playName, setPlayName] = useState('Nouveau Play');
-  const [savedPlays, setSavedPlays] = useState([]);
-  const stageRef = useRef();
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingPoints, setDrawingPoints] = useState([]);
+export default function BasketballStatsTracker() {
+  const [players] = useState([
+    { id: 1, name: 'Maxime' },
+    { id: 2, name: 'Sasha' },
+    { id: 3, name: 'Théotime' },
+    { id: 4, name: 'Noé' },
+    { id: 5, name: 'Keziah' },
+    { id: 6, name: 'Nathan' },
+    { id: 7, name: 'Valentin' },
+    { id: 8, name: 'Jad' },
+    { id: 9, name: 'Marco' },
+    { id: 10, name: 'Thierno' },
+    { id: 11, name: 'Peniel' },
+    { id: 12, name: 'Nat' }
+  ]);
+  const [selectedPlayer, setSelectedPlayer] = useState(players[0]);
+  const [selectedZone, setSelectedZone] = useState(null);
+  const [shots, setShots] = useState({});
+  const [inputTentes, setInputTentes] = useState('');
+  const [inputMarques, setInputMarques] = useState('');
+  const [view, setView] = useState('main');
 
-  // Charger les plays sauvegardés
   useEffect(() => {
-    const saved = localStorage.getItem('basketballPlays');
-    if (saved) {
-      setSavedPlays(JSON.parse(saved));
-    }
+    loadData();
   }, []);
 
-  // Gestion de l'historique
-  const saveToHistory = (newElements) => {
-    const newHistory = history.slice(0, historyStep + 1);
-    newHistory.push(newElements);
-    setHistory(newHistory);
-    setHistoryStep(newHistory.length - 1);
+  const loadData = async () => {
+    try {
+      const shotsResult = await window.storage.get('basketball_shots');
+      if (shotsResult) {
+        setShots(JSON.parse(shotsResult.value));
+      }
+    } catch (error) {
+      console.log('Initialisation des données');
+    }
   };
 
-  // Ajouter un joueur
-  const addPlayer = (team, number = 1) => {
-    const newPlayer = {
-      id: Date.now(),
-      type: 'player',
-      team: team,
-      number: number,
-      x: team === 'offense' ? 200 : 600,
-      y: 300 + (elements.filter(e => e.type === 'player' && e.team === team).length * 60),
-    };
-    const newElements = [...elements, newPlayer];
-    setElements(newElements);
-    saveToHistory(newElements);
+  const saveData = async (newShots) => {
+    try {
+      await window.storage.set('basketball_shots', JSON.stringify(newShots || shots));
+    } catch (error) {
+      console.error('Erreur de sauvegarde:', error);
+    }
   };
 
-  // Ajouter le ballon
-  const addBall = () => {
-    if (elements.find(e => e.type === 'ball')) return;
-    const newBall = {
-      id: Date.now(),
-      type: 'ball',
-      x: 400,
-      y: 300,
-    };
-    const newElements = [...elements, newBall];
-    setElements(newElements);
-    saveToHistory(newElements);
-  };
-
-  // Gestion du clic sur le canvas
-  const handleStageClick = (e) => {
-    const clickedOnEmpty = e.target === e.target.getStage();
+  const validateEntry = () => {
+    if (!selectedPlayer || !selectedZone) return;
     
-    if (clickedOnEmpty) {
-      setSelectedElement(null);
-      
-      if (selectedTool === 'arrow' && !isDrawing) {
-        // Commencer à dessiner une flèche
-        const pos = e.target.getStage().getPointerPosition();
-        setIsDrawing(true);
-        setDrawingPoints([pos.x, pos.y, pos.x, pos.y]);
+    const tentes = parseInt(inputTentes) || 0;
+    const marques = parseInt(inputMarques) || 0;
+    
+    if (tentes === 0) return;
+    if (marques > tentes) {
+      alert('Le nombre de tirs marqués ne peut pas dépasser le nombre de tirs tentés');
+      return;
+    }
+
+    const playerShots = shots[selectedPlayer.id] || {};
+    const zoneShots = playerShots[selectedZone] || { tentes: 0, marques: 0 };
+    
+    const newShots = {
+      ...shots,
+      [selectedPlayer.id]: {
+        ...playerShots,
+        [selectedZone]: {
+          tentes: zoneShots.tentes + tentes,
+          marques: zoneShots.marques + marques
+        }
+      }
+    };
+    
+    setShots(newShots);
+    saveData(newShots);
+    
+    // Reset inputs
+    setInputTentes('');
+    setInputMarques('');
+  };
+
+  const exportToCSV = () => {
+    let csv = 'Joueur,Zone,Tirs Tentés,Tirs Marqués,Pourcentage\n';
+    
+    players.forEach(player => {
+      const playerShots = shots[player.id] || {};
+      ZONES.forEach(zone => {
+        const zoneData = playerShots[zone.id] || { tentes: 0, marques: 0 };
+        const pct = zoneData.tentes > 0 ? ((zoneData.marques / zoneData.tentes) * 100).toFixed(1) : '0';
+        csv += `${player.name},${zone.name},${zoneData.tentes},${zoneData.marques},${pct}%\n`;
+      });
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `stats_basketball_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  const resetAllData = async () => {
+    if (confirm('Êtes-vous sûr de vouloir effacer toutes les données ?')) {
+      setShots({});
+      setSelectedZone(null);
+      try {
+        await window.storage.delete('basketball_shots');
+      } catch (error) {
+        console.error('Erreur lors de la suppression:', error);
       }
     }
   };
 
-  const handleMouseMove = (e) => {
-    if (!isDrawing) return;
+  const getPlayerStats = (playerId) => {
+    const playerShots = shots[playerId] || {};
+    let tentes = 0;
+    let marques = 0;
     
-    const stage = e.target.getStage();
-    const point = stage.getPointerPosition();
-    const newPoints = [drawingPoints[0], drawingPoints[1], point.x, point.y];
-    setDrawingPoints(newPoints);
-  };
-
-  const handleMouseUp = () => {
-    if (!isDrawing || drawingPoints.length < 4) return;
+    ZONES.forEach(zone => {
+      const zoneData = playerShots[zone.id] || { tentes: 0, marques: 0 };
+      tentes += zoneData.tentes;
+      marques += zoneData.marques;
+    });
     
-    const newArrow = {
-      id: Date.now(),
-      type: 'arrow',
-      points: drawingPoints,
-    };
-    
-    const newElements = [...elements, newArrow];
-    setElements(newElements);
-    saveToHistory(newElements);
-    
-    setIsDrawing(false);
-    setDrawingPoints([]);
+    return { tentes, marques, pct: tentes > 0 ? ((marques / tentes) * 100).toFixed(1) : '0' };
   };
 
-  // Sauvegarder le play
-  const savePlay = () => {
-    const playData = {
-      id: Date.now(),
-      name: playName,
-      elements: elements,
-      timestamp: new Date().toISOString(),
-    };
-    
-    const newSavedPlays = [...savedPlays, playData];
-    setSavedPlays(newSavedPlays);
-    localStorage.setItem('basketballPlays', JSON.stringify(newSavedPlays));
-  };
+  if (view === 'stats') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 p-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-800">Statistiques de l'Équipe</h2>
+              <button
+                onClick={() => setView('main')}
+                className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-lg font-semibold"
+              >
+                Retour
+              </button>
+            </div>
 
-  // Charger un play
-  const loadPlay = (play) => {
-    setElements(play.elements);
-    setPlayName(play.name);
-    saveToHistory(play.elements);
-  };
-
-  // Exporter en PNG
-  const exportPNG = () => {
-    const uri = stageRef.current.toDataURL();
-    const link = document.createElement('a');
-    link.download = `${playName}.png`;
-    link.href = uri;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Annuler/Refaire
-  const undo = () => {
-    if (historyStep > 0) {
-      setHistoryStep(historyStep - 1);
-      setElements(history[historyStep - 1]);
-    }
-  };
-
-  const redo = () => {
-    if (historyStep < history.length - 1) {
-      setHistoryStep(historyStep + 1);
-      setElements(history[historyStep + 1]);
-    }
-  };
-
-  // Réinitialiser
-  const clearCanvas = () => {
-    setElements([]);
-    saveToHistory([]);
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-gray-900">Basketball Tactics Editor</h1>
-            <input
-              type="text"
-              value={playName}
-              onChange={(e) => setPlayName(e.target.value)}
-              className="px-3 py-1 border rounded-lg"
-              placeholder="Nom du play"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={undo}
-              className="p-2 hover:bg-gray-100 rounded"
-              disabled={historyStep <= 0}
-            >
-              <Undo className="w-5 h-5" />
-            </button>
-            <button
-              onClick={redo}
-              className="p-2 hover:bg-gray-100 rounded"
-              disabled={historyStep >= history.length - 1}
-            >
-              <Redo className="w-5 h-5" />
-            </button>
-            <button
-              onClick={savePlay}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              Sauvegarder
-            </button>
-            <button
-              onClick={exportPNG}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Exporter PNG
-            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 p-3 text-left">Joueur</th>
+                    {ZONES.map(zone => (
+                      <th key={zone.id} className="border border-gray-300 p-3 text-center" style={{ color: zone.color }}>
+                        {zone.name}
+                      </th>
+                    ))}
+                    <th className="border border-gray-300 p-3 text-center bg-gray-200">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {players.map(player => {
+                    const playerShots = shots[player.id] || {};
+                    const stats = getPlayerStats(player.id);
+                    
+                    return (
+                      <tr key={player.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-300 p-3 font-semibold">{player.name}</td>
+                        {ZONES.map(zone => {
+                          const zoneData = playerShots[zone.id] || { tentes: 0, marques: 0 };
+                          const pct = zoneData.tentes > 0 ? ((zoneData.marques / zoneData.tentes) * 100).toFixed(0) : '-';
+                          
+                          return (
+                            <td key={zone.id} className="border border-gray-300 p-3 text-center text-sm">
+                              <div>{zoneData.marques}/{zoneData.tentes}</div>
+                              <div className="text-xs text-gray-600">{pct !== '-' ? `${pct}%` : '-'}</div>
+                            </td>
+                          );
+                        })}
+                        <td className="border border-gray-300 p-3 text-center font-semibold bg-gray-50">
+                          <div>{stats.marques}/{stats.tentes}</div>
+                          <div className="text-sm text-gray-600">{stats.pct}%</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
+    );
+  }
 
-      <div className="flex h-[calc(100vh-64px)]">
-        {/* Sidebar - Outils */}
-        <div className="w-64 bg-white shadow-lg">
-          <div className="p-4">
-            <h3 className="text-sm font-semibold text-gray-500 mb-3">OUTILS</h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => setSelectedTool('move')}
-                className={`w-full p-3 text-left rounded-lg flex items-center gap-3 ${
-                  selectedTool === 'move' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                }`}
-              >
-                <Move className="w-5 h-5" />
-                Déplacer
-              </button>
-              <button
-                onClick={() => setSelectedTool('arrow')}
-                className={`w-full p-3 text-left rounded-lg flex items-center gap-3 ${
-                  selectedTool === 'arrow' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50'
-                }`}
-              >
-                <ArrowRight className="w-5 h-5" />
-                Flèche
-              </button>
-            </div>
-
-            <h3 className="text-sm font-semibold text-gray-500 mb-3 mt-6">ÉLÉMENTS</h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => addPlayer('offense', elements.filter(e => e.type === 'player' && e.team === 'offense').length + 1)}
-                className="w-full p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-3"
-              >
-                <Users className="w-5 h-5" />
-                Joueur Attaque
-              </button>
-              <button
-                onClick={() => addPlayer('defense', elements.filter(e => e.type === 'player' && e.team === 'defense').length + 1)}
-                className="w-full p-3 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-3"
-              >
-                <Users className="w-5 h-5" />
-                Joueur Défense
-              </button>
-              <button
-                onClick={addBall}
-                className="w-full p-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-3"
-              >
-                <Circle className="w-5 h-5" />
-                Ballon
-              </button>
-            </div>
-
-            <div className="mt-6">
-              <button
-                onClick={clearCanvas}
-                className="w-full p-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex items-center gap-3"
-              >
-                <Trash2 className="w-5 h-5" />
-                Réinitialiser
-              </button>
-            </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-blue-50 p-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="bg-white rounded-lg shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-orange-600 to-blue-600 p-6 text-white">
+            <h1 className="text-4xl font-bold mb-2">Stats de Tir Basketball</h1>
+            <p className="text-lg opacity-90">Sélectionnez joueur → zone → entrez les tirs</p>
           </div>
 
-          {/* Plays sauvegardés */}
-          <div className="p-4 border-t">
-            <h3 className="text-sm font-semibold text-gray-500 mb-3">PLAYS SAUVEGARDÉS</h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {savedPlays.map(play => (
-                <button
-                  key={play.id}
-                  onClick={() => loadPlay(play)}
-                  className="w-full p-2 text-left text-sm bg-gray-50 rounded hover:bg-gray-100"
-                >
-                  {play.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+          <div className="flex flex-col lg:flex-row">
+            {/* SIDEBAR - Liste des joueurs */}
+            <div className="lg:w-80 bg-gray-50 border-r border-gray-200 p-4">
+              <div className="mb-4">
+                <h2 className="text-xl font-bold text-gray-800">Joueurs (12)</h2>
+              </div>
 
-        {/* Canvas principal */}
-        <div className="flex-1 bg-gray-50 flex items-center justify-center p-8">
-          <div className="bg-white rounded-lg shadow-xl">
-            <Stage
-              width={COURT_WIDTH}
-              height={COURT_HEIGHT}
-              ref={stageRef}
-              onClick={handleStageClick}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-            >
-              <Layer>
-                {/* Terrain de basketball */}
-                <Rect
-                  x={0}
-                  y={0}
-                  width={COURT_WIDTH}
-                  height={COURT_HEIGHT}
-                  fill="#f4a460"
-                  stroke="#8B4513"
-                  strokeWidth={3}
-                />
-                
-                {/* Ligne médiane */}
-                <Line
-                  points={[COURT_WIDTH/2, 0, COURT_WIDTH/2, COURT_HEIGHT]}
-                  stroke="#8B4513"
-                  strokeWidth={2}
-                />
-                
-                {/* Cercle central */}
-                <Circle
-                  x={COURT_WIDTH/2}
-                  y={COURT_HEIGHT/2}
-                  radius={60}
-                  stroke="#8B4513"
-                  strokeWidth={2}
-                />
-                
-                {/* Paniers */}
-                <Circle
-                  x={100}
-                  y={COURT_HEIGHT/2}
-                  radius={15}
-                  stroke="#FF6600"
-                  strokeWidth={3}
-                  fill="transparent"
-                />
-                <Circle
-                  x={COURT_WIDTH - 100}
-                  y={COURT_HEIGHT/2}
-                  radius={15}
-                  stroke="#FF6600"
-                  strokeWidth={3}
-                  fill="transparent"
-                />
-
-                {/* Éléments du play */}
-                {elements.map((element) => {
-                  if (element.type === 'player') {
-                    return (
-                      <Group
-                        key={element.id}
-                        x={element.x}
-                        y={element.y}
-                        draggable={selectedTool === 'move'}
-                        onDragEnd={(e) => {
-                          const newElements = elements.map(el => 
-                            el.id === element.id 
-                              ? { ...el, x: e.target.x(), y: e.target.y() }
-                              : el
-                          );
-                          setElements(newElements);
-                          saveToHistory(newElements);
-                        }}
-                        onClick={() => setSelectedElement(element)}
-                      >
-                        <Circle
-                          radius={PLAYER_RADIUS}
-                          fill={element.team === 'offense' ? '#3B82F6' : '#EF4444'}
-                          stroke={selectedElement?.id === element.id ? '#000' : 'transparent'}
-                          strokeWidth={2}
-                        />
-                        <Text
-                          x={-8}
-                          y={-8}
-                          text={element.number.toString()}
-                          fontSize={16}
-                          fontStyle="bold"
-                          fill="white"
-                        />
-                      </Group>
-                    );
-                  } else if (element.type === 'ball') {
-                    return (
-                      <Circle
-                        key={element.id}
-                        x={element.x}
-                        y={element.y}
-                        radius={10}
-                        fill="#FF8C00"
-                        stroke="#FF6600"
-                        strokeWidth={2}
-                        draggable={selectedTool === 'move'}
-                        onDragEnd={(e) => {
-                          const newElements = elements.map(el => 
-                            el.id === element.id 
-                              ? { ...el, x: e.target.x(), y: e.target.y() }
-                              : el
-                          );
-                          setElements(newElements);
-                          saveToHistory(newElements);
-                        }}
-                        onClick={() => setSelectedElement(element)}
-                      />
-                    );
-                  } else if (element.type === 'arrow') {
-                    return (
-                      <Arrow
-                        key={element.id}
-                        points={element.points}
-                        stroke="#000"
-                        strokeWidth={3}
-                        fill="#000"
-                        onClick={() => {
-                          if (selectedTool === 'move') {
-                            setSelectedElement(element);
-                          }
-                        }}
-                      />
-                    );
-                  }
-                  return null;
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {players.map(player => {
+                  const stats = getPlayerStats(player.id);
+                  const isSelected = selectedPlayer?.id === player.id;
+                  
+                  return (
+                    <div
+                      key={player.id}
+                      className={`p-3 rounded-lg cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-blue-600 text-white shadow-lg scale-105'
+                          : 'bg-white hover:bg-gray-100'
+                      }`}
+                      onClick={() => setSelectedPlayer(player)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg">{player.name}</h3>
+                          <p className={`text-sm ${isSelected ? 'text-blue-100' : 'text-gray-600'}`}>
+                            {stats.tentes} tirs • {stats.pct}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
                 })}
+              </div>
+            </div>
 
-                {/* Flèche en cours de dessin */}
-                {isDrawing && drawingPoints.length >= 4 && (
-                  <Arrow
-                    points={drawingPoints}
-                    stroke="#666"
-                    strokeWidth={2}
-                    fill="#666"
-                    dash={[5, 5]}
-                  />
-                )}
-              </Layer>
-            </Stage>
+            {/* MAIN CONTENT - Zones et saisie */}
+            <div className="flex-1 p-6">
+              {!selectedPlayer ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center text-gray-500">
+                    <p className="text-2xl mb-2">👈</p>
+                    <p className="text-xl">Sélectionnez un joueur pour commencer</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-6 bg-blue-50 p-4 rounded-lg">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-1">
+                      Joueur sélectionné : {selectedPlayer.name}
+                    </h2>
+                    <p className="text-gray-600">Sélectionnez une zone de tir ci-dessous</p>
+                  </div>
+
+                  {/* Grille des zones */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    {ZONES.map(zone => {
+                      const zoneData = (shots[selectedPlayer.id] || {})[zone.id] || { tentes: 0, marques: 0 };
+                      const pct = zoneData.tentes > 0 ? ((zoneData.marques / zoneData.tentes) * 100).toFixed(1) : '0';
+                      const isSelected = selectedZone === zone.id;
+
+                      return (
+                        <button
+                          key={zone.id}
+                          onClick={() => setSelectedZone(zone.id)}
+                          className={`p-4 rounded-lg border-4 transition-all ${
+                            isSelected
+                              ? 'shadow-2xl scale-105'
+                              : 'shadow-md hover:scale-102'
+                          }`}
+                          style={{
+                            borderColor: zone.color,
+                            backgroundColor: isSelected ? zone.color : 'white',
+                            color: isSelected ? 'white' : zone.color
+                          }}
+                        >
+                          <h3 className="font-bold text-lg mb-2">{zone.name}</h3>
+                          <div className={`text-sm ${isSelected ? 'opacity-90' : 'opacity-70'}`}>
+                            <div>{zoneData.marques}/{zoneData.tentes}</div>
+                            <div className="font-semibold">{pct}%</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Zone de saisie */}
+                  {selectedZone && (
+                    <div className="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border-2 border-blue-500">
+                      <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                        Zone : {ZONES.find(z => z.id === selectedZone)?.name}
+                      </h3>
+                      
+                      <div className="flex flex-col md:flex-row gap-4 items-end">
+                        <div className="flex-1">
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Tirs tentés
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={inputTentes}
+                            onChange={(e) => setInputTentes(e.target.value)}
+                            placeholder="0"
+                            className="w-full px-4 py-3 text-2xl border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                          />
+                        </div>
+
+                        <div className="flex-1">
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Tirs marqués
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={inputMarques}
+                            onChange={(e) => setInputMarques(e.target.value)}
+                            placeholder="0"
+                            className="w-full px-4 py-3 text-2xl border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-center"
+                          />
+                        </div>
+
+                        <button
+                          onClick={validateEntry}
+                          disabled={!inputTentes}
+                          className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xl font-bold shadow-lg"
+                        >
+                          ✓ VALIDER
+                        </button>
+                      </div>
+
+                      <p className="text-sm text-gray-600 mt-3">
+                        Exemple : 10 tentés, 8 marqués = 8 paniers sur 10 tentatives (80%)
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Boutons d'action en bas */}
+              <div className="flex gap-3 mt-6 flex-wrap">
+                <button
+                  onClick={() => setView('stats')}
+                  className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 font-semibold"
+                >
+                  <BarChart3 size={20} />
+                  Voir Statistiques
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 font-semibold"
+                >
+                  <Download size={20} />
+                  Exporter CSV
+                </button>
+                <button
+                  onClick={resetAllData}
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 font-semibold"
+                >
+                  <Trash2 size={20} />
+                  Réinitialiser
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-export default BasketballTacticsEditor;
