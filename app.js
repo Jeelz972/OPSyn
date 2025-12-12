@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 
 // --- CONFIGURATION FIREBASE (À REMPLIR) ---
 const firebaseConfig = {
-  apiKey: "VOTRE_API_KEY",
-  authDomain: "VOTRE_PROJECT_ID.firebaseapp.com",
-  projectId: "VOTRE_PROJECT_ID",
-  storageBucket: "VOTRE_PROJECT_ID.appspot.com",
-  messagingSenderId: "VOTRE_SENDER_ID",
-  appId: "VOTRE_APP_ID"
+    apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
+    authDomain: "statu18elite.firebaseapp.com",
+    projectId: "statu18elite",
+    storageBucket: "statu18elite.firebasestorage.app",
+    messagingSenderId: "862850988986",
+    appId: "1:862850988986:web:d64afc2c94eb50a1f6fb83",
+    measurementId: "G-VNEB7Z8ZR1"
 };
 
 // Initialisation conditionnelle de Firebase
