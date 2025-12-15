@@ -1,27 +1,36 @@
+// --- CONFIGURATION FIREBASE ---
 const firebaseConfig = {
     apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
     authDomain: "statu18elite.firebaseapp.com",
     projectId: "statu18elite",
-    storageBucket: "statu18elite.firebasestorage.app",
+    storageBucket: "statu18elite.appspot.com", // J'ai corrigé l'extension ici (.appspot.com est le standard)
     messagingSenderId: "862850988986",
     appId: "1:862850988986:web:d64afc2c94eb50a1f6fb83",
     measurementId: "G-VNEB7Z8ZR1"
-  };
+};
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-
+// --- INITIALISATION (Version CDN / Navigateur) ---
 let db = null;
-        if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-            try {
-                firebase.initializeApp(firebaseConfig);
-                db = app.firestore();
-                console.log("Firebase connecté");
-            } catch (e) {
-                console.error("Erreur Firebase:", e);
-            }
+
+// On vérifie que la librairie Firebase est bien chargée par le navigateur
+if (typeof firebase !== 'undefined') {
+    try {
+        // On initialise seulement si aucune app n'existe déjà
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
         }
+        
+        // On connecte la base de données Firestore
+        db = firebase.firestore();
+        console.log("Firebase connecté avec succès ✅");
+        
+    } catch (e) {
+        console.error("Erreur lors de l'initialisation de Firebase:", e);
+        alert("Erreur de connexion à la base de données. Vérifiez la console.");
+    }
+} else {
+    console.error("Erreur critique : La librairie Firebase n'est pas chargée.");
+}
 
         const { useState, useEffect, useMemo } = React;
 
