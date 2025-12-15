@@ -88,7 +88,7 @@ function App() {
             <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
                     <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 flex items-center gap-2">
-                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.6 Import</span>
+                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.7 No-Dupes</span>
                     </h1>
                     <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
                         <button onClick={()=>setActiveModule('shooting')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeModule==='shooting'?'bg-white text-blue-600 shadow-md scale-105':'text-gray-500 hover:text-gray-800'}`}>🎯 Saisie</button>
@@ -226,7 +226,6 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs ${item.zoneId==='zone_lf'?'bg-purple-500':'bg-blue-500'}`}>{item.zoneId==='zone_lf'?'LF':ZONES_TERRAIN.find(z=>z.id===item.zoneId)?.name}</div>
                                     <div><div className="font-bold text-gray-800 text-sm">{players.find(p=>p.id===item.playerId)?.name}</div><div className="text-xs text-gray-500">{SHOT_TYPES.find(t=>t.id===item.type)?.label} • {item.date}</div></div>
                                 </div>
-                                {/* ICI : CORRECTION DU BUG DES QUOTES */}
                                 <div className="flex items-center gap-4">
                                     <div className="text-right">
                                         <div className="font-black text-gray-800 text-lg leading-none">{item.marques}/{item.tentes}</div>
@@ -314,14 +313,31 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
         const file = e.target.files[0];
         if(!file) return;
         const reader = new FileReader();
+        
         reader.onload = (evt) => {
             try {
+                // 1. Lire le CSV
                 const recs = parseSpecificCSV(evt.target.result, file.name);
-                if(recs.length > 0) {
-                    setHistoryData([...historyData, ...recs]);
-                    alert(`✅ Import réussi : ${recs.length} séries ajoutées !`);
+                
+                // 2. CRÉER UNE "SIGNATURE" UNIQUE POUR CHAQUE ENREGISTREMENT EXISTANT
+                // Signature = Date + Player + Zone
+                const existingKeys = new Set(historyData.map(item => 
+                    `${item.date}-${item.playerId}-${item.zoneId}`
+                ));
+
+                // 3. FILTRER : Ne garder que ceux dont la signature n'existe pas encore
+                const uniqueRecs = recs.filter(item => {
+                    const key = `${item.date}-${item.playerId}-${item.zoneId}`;
+                    return !existingKeys.has(key);
+                });
+
+                // 4. METTRE À JOUR OU ALERTER
+                if(uniqueRecs.length > 0) {
+                    setHistoryData([...historyData, ...uniqueRecs]);
+                    const skipped = recs.length - uniqueRecs.length;
+                    alert(`✅ Import réussi : ${uniqueRecs.length} nouvelles séries ajoutées ${skipped > 0 ? `(${skipped} doublons ignorés)` : ''}.`);
                 } else {
-                    alert("⚠️ Aucune donnée valide trouvée.");
+                    alert("⚠️ Aucun nouveau tir importé (toutes les données existent déjà).");
                 }
             } catch(err) { alert("Erreur lecture CSV: " + err.message); }
         };
