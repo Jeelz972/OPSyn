@@ -18,13 +18,13 @@ let db = null;
 
         // --- DONNÉES ---
         const ZONES_TERRAIN = [
-            { id: 'axe', name: 'Axe', color: 'from-indigo-500 to-indigo-600' },
             { id: 'gauche_0', name: 'G 0°', color: 'from-blue-500 to-blue-600' },
             { id: 'gauche_45', name: 'G 45°', color: 'from-emerald-400 to-emerald-600' },
             { id: 'gauche_70', name: 'G 70°', color: 'from-cyan-400 to-cyan-600' },
-            { id: 'droit_0', name: 'D 0°', color: 'from-pink-500 to-pink-600' },
+            { id: 'axe', name: 'Axe', color: 'from-indigo-500 to-indigo-600' },
+            { id: 'droit_70', name: 'D 70°', color: 'from-red-500 to-red-600' },
             { id: 'droit_45', name: 'D 45°', color: 'from-amber-400 to-amber-600' },
-            { id: 'droit_70', name: 'D 70°', color: 'from-red-500 to-red-600' }
+            { id: 'droit_0', name: 'D 0°', color: 'from-pink-500 to-pink-600' }
         ];
 
         const INITIAL_PLAYERS = [
@@ -87,7 +87,7 @@ let db = null;
                     <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200 shadow-sm">
                         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
                             <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 flex items-center gap-2">
-                                🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.5</span>
+                                🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.6 Import</span>
                             </h1>
                             <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
                                 <button onClick={()=>setActiveModule('shooting')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeModule==='shooting'?'bg-white text-blue-600 shadow-md scale-105':'text-gray-500 hover:text-gray-800'}`}>🎯 Saisie</button>
@@ -102,13 +102,13 @@ let db = null;
 
                     <div className="max-w-7xl mx-auto p-4 md:p-6 animate-fade-in">
                         {activeModule === 'shooting' && <ShootingModule players={players} setPlayers={(p)=>updateData('basketball_players',p,setPlayers)} historyData={historyData} setHistoryData={(h)=>updateData('basketball_history',h,setHistoryData)} />}
-                        {activeModule === 'analysis' && <AnalysisModule players={players} historyData={historyData} />}
+                        {activeModule === 'analysis' && <AnalysisModule players={players} historyData={historyData} setHistoryData={(h)=>updateData('basketball_history',h,setHistoryData)} />}
                     </div>
                 </div>
             );
         }
 
-        // --- SAISIE (Shooting) ---
+        // --- SAISIE ---
         function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
             const [mode, setMode] = useState('field');
             const [selectedPlayer, setSelectedPlayer] = useState(players[0]?.id);
@@ -225,7 +225,7 @@ let db = null;
                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs ${item.zoneId==='zone_lf'?'bg-purple-500':'bg-blue-500'}`}>{item.zoneId==='zone_lf'?'LF':ZONES_TERRAIN.find(z=>z.id===item.zoneId)?.name}</div>
                                             <div><div className="font-bold text-gray-800 text-sm">{players.find(p=>p.id===item.playerId)?.name}</div><div className="text-xs text-gray-500">{SHOT_TYPES.find(t=>t.id===item.type)?.label} • {item.date}</div></div>
                                         </div>
-                                        <div className="flex items-center gap-4"><div className="text-right"><div className="font-black text-gray-800 text-lg leading-none">{item.marques}/{item.tentes}</div><div className={`text-[10px] font-bold ${item.tentes>0&&(item.marques/item.tentes)>=0.5?'text-green-500':'text-orange-500'}`}>{item.tentes>0?Math.round((item.marques/item.tentes)*100):0}%</div></div><div className="flex gap-1"><button onClick={()=>loadForEdit(item)} className="p-2 text-blue-400 hover:bg-blue-100 rounded">✏️</button><button onClick={()=>deleteRecord(item.id)} className="p-2 text-red-300 hover:bg-red-100 rounded">🗑️</button></div></div>
+                                        <div className="flex items-center gap-4"><div className="text-right"><div className="font-black text-gray-800 text-lg leading-none">{item.marques}/{item.tentes}</div><div className={'text-[10px] font-bold ${item.tentes>0&&(item.marques/item.tentes)>=0.5?'text-green-500':'text-orange-500'}'}>{item.tentes>0?Math.round((item.marques/item.tentes)*100):0}%</div></div><div className="flex gap-1"><button onClick={()=>loadForEdit(item)} className="p-2 text-blue-400 hover:bg-blue-100 rounded">✏️</button><button onClick={()=>deleteRecord(item.id)} className="p-2 text-red-300 hover:bg-red-100 rounded">🗑️</button></div></div>
                                     </div>
                                 ))}
                             </div>
@@ -235,23 +235,104 @@ let db = null;
             );
         }
 
-        // --- ANALYSE (Analysis) ---
-        function AnalysisModule({ players, historyData }) {
+        // --- ANALYSE ---
+        function AnalysisModule({ players, historyData, setHistoryData }) {
             const [filterPlayer, setFilterPlayer] = useState('all');
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
 
-            // Calculs
-            const calculateStats = () => {
-                const matrix = {}; 
-                const maxPerZone = {}; 
+            // --- FONCTION D'IMPORT CSV SPÉCIFIQUE ---
+            const parseSpecificCSV = (csvText, fileName) => {
+                const lines = csvText.split('\n');
+                
+                // Parser CSV robuste qui gère les guillemets (ex: "62,5")
+                const parseCSVLine = (line) => {
+                    const res = []; let cur = '', inQ = false;
+                    for(let c of line) {
+                        if(c === '"') { inQ = !inQ; }
+                        else if(c === ',' && !inQ) { res.push(cur); cur = ''; }
+                        else cur += c;
+                    }
+                    res.push(cur);
+                    return res.map(s => s.trim().replace(/^"|"$/g, ''));
+                };
 
+                // Recherche de la ligne d'en-tête (commence par "JOURS")
+                let headerIdx = lines.findIndex(l => l.toUpperCase().startsWith('JOURS'));
+                if (headerIdx === -1) headerIdx = 3; // Fallback
+
+                const dataRows = lines.slice(headerIdx + 1);
+                const newRecs = [];
+
+                // Détection Joueur via Nom de fichier
+                let playerId = players[0].id;
+                const fNameUpper = fileName.toUpperCase();
+                const foundP = players.find(p => fNameUpper.includes(p.name.toUpperCase()));
+                if(foundP) playerId = foundP.id;
+
+                // Mapping Colonnes (0-indexé)
+                // 0°G(B,C)=1,2 | 45°G(E,F)=4,5 | 70°G(H,I)=7,8 | Axe(K,L)=10,11
+                // 70°D(N,O)=13,14 | 45°D(Q,R)=16,17 | 0°D(T,U)=19,20
+                const map = [
+                    { id: 'gauche_0', c: 1 }, { id: 'gauche_45', c: 4 }, { id: 'gauche_70', c: 7 },
+                    { id: 'axe', c: 10 },
+                    { id: 'droit_70', c: 13 }, { id: 'droit_45', c: 16 }, { id: 'droit_0', c: 19 }
+                ];
+
+                dataRows.forEach(l => {
+                    const row = parseCSVLine(l);
+                    if(row.length < 20) return;
+
+                    // Date FR (JJ/MM/AAAA) -> ISO
+                    const dRaw = row[0];
+                    if(!dRaw || !dRaw.includes('/')) return;
+                    const [dd, mm, yyyy] = dRaw.split('/');
+                    const dateISO = `${yyyy}-${mm}-${dd}`;
+
+                    map.forEach(m => {
+                        const tt = parseInt(row[m.c]);
+                        const tr = parseInt(row[m.c+1]);
+                        if(!isNaN(tt) && tt > 0) {
+                            newRecs.push({
+                                id: Date.now() + Math.random(),
+                                date: dateISO,
+                                playerId: playerId,
+                                zoneId: m.id,
+                                type: '2pt_arret', // Défaut car non spécifié
+                                tentes: tt,
+                                marques: isNaN(tr) ? 0 : tr
+                            });
+                        }
+                    });
+                });
+                return newRecs;
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const recs = parseSpecificCSV(evt.target.result, file.name);
+                        if(recs.length > 0) {
+                            setHistoryData([...historyData, ...recs]);
+                            alert(`✅ Import réussi : ${recs.length} séries ajoutées !`);
+                        } else {
+                            alert("⚠️ Aucune donnée valide trouvée.");
+                        }
+                    } catch(err) { alert("Erreur lecture CSV: " + err.message); }
+                };
+                reader.readAsText(file);
+            };
+
+            const calculateStats = () => {
+                const matrix = {}; const maxPerZone = {}; 
                 players.forEach(p => {
                     matrix[p.id] = { 'global_arret': {tt:0, tr:0}, 'global_mouv': {tt:0, tr:0}, 'lf': {tt:0, tr:0} };
                     ZONES_TERRAIN.forEach(z => matrix[p.id][z.id] = {tt:0, tr:0});
                 });
 
-                // Filtrage
                 let filteredData = [...historyData];
                 if(filterPlayer !== 'all') filteredData = filteredData.filter(d => d.playerId == filterPlayer);
                 if(startDate) filteredData = filteredData.filter(d => d.date >= startDate);
@@ -292,7 +373,6 @@ let db = null;
 
             return (
                 <div className="space-y-6">
-                    {/* BARRE DE FILTRES */}
                     <div className="bg-white p-4 rounded-3xl shadow-lg border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4 animate-slide-up">
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <span className="text-gray-400 font-bold text-xs uppercase">Joueur:</span>
@@ -301,7 +381,6 @@ let db = null;
                                 {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         </div>
-
                         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                             <div className="flex gap-2 bg-gray-50 p-1 rounded-xl w-full md:w-auto">
                                 <button onClick={()=>setQuickRange('all')} className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold ${!startDate?'bg-white shadow text-blue-600':'text-gray-400'}`}>TOUT</button>
@@ -309,23 +388,22 @@ let db = null;
                                 <button onClick={()=>setQuickRange('season')} className="flex-1 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-200">SAISON</button>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg">
-                                    <span className="text-xs text-gray-400 font-bold">Du</span>
-                                    <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="bg-transparent border-none text-sm font-bold text-gray-700 outline-none w-32"/>
-                                </div>
-                                <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg">
-                                    <span className="text-xs text-gray-400 font-bold">Au</span>
-                                    <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="bg-transparent border-none text-sm font-bold text-gray-700 outline-none w-32"/>
-                                </div>
+                                <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg"><span className="text-xs text-gray-400 font-bold">Du</span><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="bg-transparent border-none text-sm font-bold text-gray-700 outline-none w-32"/></div>
+                                <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg"><span className="text-xs text-gray-400 font-bold">Au</span><input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="bg-transparent border-none text-sm font-bold text-gray-700 outline-none w-32"/></div>
                             </div>
                         </div>
                     </div>
 
+                    {/* BOUTON IMPORT CSV */}
+                    <div className="flex justify-end">
+                        <label className="cursor-pointer bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-sm shadow hover:bg-slate-700 transition flex items-center gap-2">
+                            <span>📂 Importer CSV</span>
+                            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+                        </label>
+                    </div>
+
                     <div className="bg-white rounded-3xl shadow-xl overflow-hidden animate-fade-in border border-gray-100">
-                        <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                            <h2 className="font-black text-xl text-gray-800">🏆 Leaderboard</h2>
-                            <span className="text-xs text-gray-400 bg-white px-2 py-1 rounded border">👑 = Leader de la zone</span>
-                        </div>
+                        <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><h2 className="font-black text-xl text-gray-800">🏆 Leaderboard</h2><span className="text-xs text-gray-400 bg-white px-2 py-1 rounded border">👑 = Leader de la zone</span></div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-center border-collapse whitespace-nowrap">
                                 <thead>
@@ -371,3 +449,4 @@ let db = null;
         }
 
         ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
