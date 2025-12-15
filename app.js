@@ -1,18 +1,22 @@
-        const firebaseConfig = {
-  apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
-  authDomain: "statu18elite.firebaseapp.com",
-  projectId: "statu18elite",
-  storageBucket: "statu18elite.firebasestorage.app",
-  messagingSenderId: "862850988986",
-  appId: "1:862850988986:web:d64afc2c94eb50a1f6fb83",
-  measurementId: "G-VNEB7Z8ZR1"
-};
+const firebaseConfig = {
+    apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
+    authDomain: "statu18elite.firebaseapp.com",
+    projectId: "statu18elite",
+    storageBucket: "statu18elite.firebasestorage.app",
+    messagingSenderId: "862850988986",
+    appId: "1:862850988986:web:d64afc2c94eb50a1f6fb83",
+    measurementId: "G-VNEB7Z8ZR1"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
 
 let db = null;
         if (typeof firebase !== 'undefined' && !firebase.apps.length) {
             try {
                 firebase.initializeApp(firebaseConfig);
-                db = firebase.firestore();
+                db = app.firestore();
                 console.log("Firebase connecté");
             } catch (e) {
                 console.error("Erreur Firebase:", e);
