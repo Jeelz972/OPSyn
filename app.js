@@ -88,7 +88,7 @@ function App() {
             <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
                     <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 flex items-center gap-2">
-                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.9 Multi-Import</span>
+                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v4.0 TeamStats</span>
                     </h1>
                     <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
                         <button onClick={()=>setActiveModule('shooting')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeModule==='shooting'?'bg-white text-blue-600 shadow-md scale-105':'text-gray-500 hover:text-gray-800'}`}>🎯 Saisie</button>
@@ -253,36 +253,24 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     
-    // GESTION IMPORT
+    // IMPORT (Identique)
     const [pendingFiles, setPendingFiles] = useState([]); 
     const [showImportModal, setShowImportModal] = useState(false);
 
-    // Fonction de parsing d'une ligne CSV
     const parseCSVRows = (csvText) => {
         const lines = csvText.split('\n');
         const parseCSVLine = (line) => {
             const res = []; let cur = '', inQ = false;
             for(let c of line) {
-                if(c === '"') { inQ = !inQ; }
-                else if(c === ',' && !inQ) { res.push(cur); cur = ''; }
-                else cur += c;
+                if(c === '"') { inQ = !inQ; } else if(c === ',' && !inQ) { res.push(cur); cur = ''; } else cur += c;
             }
-            res.push(cur);
-            return res.map(s => s.trim().replace(/^"|"$/g, ''));
+            res.push(cur); return res.map(s => s.trim().replace(/^"|"$/g, ''));
         };
-
         let headerIdx = lines.findIndex(l => l.toUpperCase().startsWith('JOURS'));
         if (headerIdx === -1) headerIdx = 3; 
-
         const dataRows = lines.slice(headerIdx + 1);
         const extractedData = [];
-
-        const map = [
-            { id: 'gauche_0', c: 1 }, { id: 'gauche_45', c: 4 }, { id: 'gauche_70', c: 7 },
-            { id: 'axe', c: 10 },
-            { id: 'droit_70', c: 13 }, { id: 'droit_45', c: 16 }, { id: 'droit_0', c: 19 }
-        ];
-
+        const map = [ { id: 'gauche_0', c: 1 }, { id: 'gauche_45', c: 4 }, { id: 'gauche_70', c: 7 }, { id: 'axe', c: 10 }, { id: 'droit_70', c: 13 }, { id: 'droit_45', c: 16 }, { id: 'droit_0', c: 19 } ];
         dataRows.forEach(l => {
             const row = parseCSVLine(l);
             if(row.length < 20) return;
@@ -290,19 +278,9 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
             if(!dRaw || !dRaw.includes('/')) return;
             const [dd, mm, yyyy] = dRaw.split('/');
             const dateISO = `${yyyy}-${mm}-${dd}`;
-
             map.forEach(m => {
-                const tt = parseInt(row[m.c]);
-                const tr = parseInt(row[m.c+1]);
-                if(!isNaN(tt) && tt > 0) {
-                    extractedData.push({
-                        zoneId: m.id,
-                        date: dateISO,
-                        type: '3pt_arret',
-                        tentes: tt,
-                        marques: isNaN(tr) ? 0 : tr
-                    });
-                }
+                const tt = parseInt(row[m.c]); const tr = parseInt(row[m.c+1]);
+                if(!isNaN(tt) && tt > 0) extractedData.push({ zoneId: m.id, date: dateISO, type: '3pt_arret', tentes: tt, marques: isNaN(tr) ? 0 : tr });
             });
         });
         return extractedData;
@@ -311,37 +289,21 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
     const handleFileSelect = (e) => {
         const files = Array.from(e.target.files);
         if(files.length === 0) return;
-
-        const promises = files.map(file => {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    const extracted = parseCSVRows(evt.target.result);
-                    // Tentative de détection du nom
-                    let detectedId = players[0].id;
-                    const fName = file.name.toUpperCase();
-                    const match = players.find(p => fName.includes(p.name.toUpperCase()));
-                    if(match) detectedId = match.id;
-
-                    resolve({
-                        fileName: file.name,
-                        playerId: detectedId, // ID modifiable
-                        data: extracted
-                    });
-                };
-                reader.readAsText(file);
-            });
-        });
-
+        const promises = files.map(file => new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const extracted = parseCSVRows(evt.target.result);
+                let detectedId = players[0].id;
+                const fName = file.name.toUpperCase();
+                const match = players.find(p => fName.includes(p.name.toUpperCase()));
+                if(match) detectedId = match.id;
+                resolve({ fileName: file.name, playerId: detectedId, data: extracted });
+            };
+            reader.readAsText(file);
+        }));
         Promise.all(promises).then(results => {
-            // On ne garde que les fichiers qui ont des données
             const validFiles = results.filter(f => f.data.length > 0);
-            if(validFiles.length > 0) {
-                setPendingFiles(validFiles);
-                setShowImportModal(true);
-            } else {
-                alert("Aucune donnée de tir valide trouvée dans les fichiers.");
-            }
+            if(validFiles.length > 0) { setPendingFiles(validFiles); setShowImportModal(true); } else { alert("Aucune donnée valide."); }
         });
     };
 
@@ -349,53 +311,53 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
         let newRecords = [];
         const existingKeys = new Set(historyData.map(item => `${item.date}-${item.playerId}-${item.zoneId}`));
         let duplicateCount = 0;
-
         pendingFiles.forEach(file => {
             file.data.forEach(d => {
                 const key = `${d.date}-${file.playerId}-${d.zoneId}`;
-                if(!existingKeys.has(key)) {
-                    newRecords.push({
-                        id: Date.now() + Math.random(),
-                        playerId: parseInt(file.playerId),
-                        ...d
-                    });
-                    existingKeys.add(key); // Evite doublons intra-import
-                } else {
-                    duplicateCount++;
-                }
+                if(!existingKeys.has(key)) { newRecords.push({ id: Date.now() + Math.random(), playerId: parseInt(file.playerId), ...d }); existingKeys.add(key); } else { duplicateCount++; }
             });
         });
-
-        if(newRecords.length > 0) {
-            setHistoryData([...historyData, ...newRecords]);
-            alert(`✅ Import terminé : ${newRecords.length} tirs ajoutés (${duplicateCount} doublons ignorés).`);
-        } else {
-            alert(`⚠️ Tous les tirs (${duplicateCount}) existent déjà.`);
-        }
-        setShowImportModal(false);
-        setPendingFiles([]);
+        if(newRecords.length > 0) { setHistoryData([...historyData, ...newRecords]); alert(`✅ Ajoutés : ${newRecords.length} (${duplicateCount} ignorés).`); } else { alert(`⚠️ Tous existent déjà.`); }
+        setShowImportModal(false); setPendingFiles([]);
     };
 
-    const updatePendingPlayer = (index, newId) => {
-        const updated = [...pendingFiles];
-        updated[index].playerId = newId;
-        setPendingFiles(updated);
-    };
+    const updatePendingPlayer = (index, newId) => { const updated = [...pendingFiles]; updated[index].playerId = newId; setPendingFiles(updated); };
 
-    // --- LOGIQUE CALCUL ---
+    // --- CALCUL STATS ---
     const calculateStats = () => {
-        const matrix = {}; const maxPerZone = {}; 
+        const matrix = {}; const maxPerZone = {};
+        // Init Team Stats
+        const teamStats = { 'global_arret': {tt:0, tr:0}, 'global_mouv': {tt:0, tr:0}, 'lf': {tt:0, tr:0} };
+        ZONES_TERRAIN.forEach(z => teamStats[z.id] = {tt:0, tr:0});
+
         players.forEach(p => {
             matrix[p.id] = { 'global_arret': {tt:0, tr:0}, 'global_mouv': {tt:0, tr:0}, 'lf': {tt:0, tr:0} };
             ZONES_TERRAIN.forEach(z => matrix[p.id][z.id] = {tt:0, tr:0});
         });
 
-        let filteredData = [...historyData];
-        if(filterPlayer !== 'all') filteredData = filteredData.filter(d => d.playerId == filterPlayer);
-        if(startDate) filteredData = filteredData.filter(d => d.date >= startDate);
-        if(endDate) filteredData = filteredData.filter(d => d.date <= endDate);
+        // 1. Filtrer par Date UNIQUEMENT pour les stats d'équipe
+        let dateFiltered = [...historyData];
+        if(startDate) dateFiltered = dateFiltered.filter(d => d.date >= startDate);
+        if(endDate) dateFiltered = dateFiltered.filter(d => d.date <= endDate);
 
-        filteredData.forEach(d => {
+        // 2. Calculer Stats Équipe (Tous les joueurs dans la période)
+        dateFiltered.forEach(d => {
+            const type = SHOT_TYPES.find(t=>t.id === d.type);
+            if(d.zoneId === 'zone_lf') {
+                teamStats['lf'].tt += d.tentes; teamStats['lf'].tr += d.marques;
+            } else if (teamStats[d.zoneId]) {
+                teamStats[d.zoneId].tt += d.tentes; teamStats[d.zoneId].tr += d.marques;
+                const key = type?.mouv ? 'global_mouv' : 'global_arret';
+                teamStats[key].tt += d.tentes; teamStats[key].tr += d.marques;
+            }
+        });
+        Object.keys(teamStats).forEach(k => { teamStats[k].pct = teamStats[k].tt > 0 ? (teamStats[k].tr/teamStats[k].tt)*100 : 0; });
+
+        // 3. Filtrer par Joueur pour la matrice individuelle
+        let playerFiltered = dateFiltered;
+        if(filterPlayer !== 'all') playerFiltered = playerFiltered.filter(d => d.playerId == filterPlayer);
+
+        playerFiltered.forEach(d => {
             if(!matrix[d.playerId]) return;
             const type = SHOT_TYPES.find(t=>t.id === d.type);
             if(d.zoneId === 'zone_lf') {
@@ -411,15 +373,22 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
             Object.keys(matrix[pid]).forEach(zid => {
                 const cell = matrix[pid][zid];
                 cell.pct = cell.tt > 0 ? (cell.tr/cell.tt)*100 : 0;
-                if(cell.tt > 0) {
-                    if(!maxPerZone[zid] || cell.pct > maxPerZone[zid].pct) maxPerZone[zid] = { pct: cell.pct, playerId: pid };
-                }
+                if(cell.tt > 0) { if(!maxPerZone[zid] || cell.pct > maxPerZone[zid].pct) maxPerZone[zid] = { pct: cell.pct, playerId: pid }; }
             });
         });
-        return { matrix, maxPerZone };
+        
+        // Calcul Total Global pour la carte résumé
+        let totalTT = 0, totalTR = 0;
+        // On somme les totaux de l'objet teamStats (Attention à ne pas double compter)
+        // On prend les zones + LF
+        ZONES_TERRAIN.forEach(z => { totalTT += teamStats[z.id].tt; totalTR += teamStats[z.id].tr; });
+        totalTT += teamStats.lf.tt; totalTR += teamStats.lf.tr;
+        const globalPct = totalTT > 0 ? Math.round((totalTR/totalTT)*100) : 0;
+
+        return { matrix, maxPerZone, teamStats, globalPct, totalTT, totalTR };
     };
 
-    const { matrix, maxPerZone } = calculateStats();
+    const { matrix, maxPerZone, teamStats, globalPct, totalTT, totalTR } = calculateStats();
     const formatPct = (n) => n.toFixed(0) + '%';
     const setQuickRange = (type) => {
         const now = new Date();
@@ -451,46 +420,37 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            {/* BOUTON IMPORT CSV */}
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+                <div className="bg-white px-6 py-2 rounded-xl shadow-sm border border-gray-100 flex gap-6 items-center">
+                    <div>
+                        <span className="block text-xs font-bold text-gray-400 uppercase">Total Équipe</span>
+                        <span className="text-xl font-black text-gray-800">{totalTR}/{totalTT}</span>
+                    </div>
+                    <div className="h-8 w-px bg-gray-200"></div>
+                    <div>
+                        <span className="block text-xs font-bold text-gray-400 uppercase">Réussite</span>
+                        <span className={`text-xl font-black ${globalPct >= 50 ? 'text-green-500' : 'text-blue-500'}`}>{globalPct}%</span>
+                    </div>
+                </div>
                 <label className="cursor-pointer bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-sm shadow hover:bg-slate-700 transition flex items-center gap-2 transform active:scale-95">
                     <span>📂 Importer CSV (Multi)</span>
                     <input type="file" accept=".csv" multiple className="hidden" onChange={handleFileSelect} />
                 </label>
             </div>
 
-            {/* MODAL DE CONFIRMATION IMPORT */}
             {showImportModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-fade-in">
                         <h3 className="text-xl font-black text-gray-800 mb-4">📥 Confirmer les Imports</h3>
-                        <p className="text-sm text-gray-500 mb-4">Vérifiez que chaque fichier est assigné au bon joueur.</p>
-                        
                         <div className="max-h-[50vh] overflow-y-auto space-y-2 mb-6">
                             {pendingFiles.map((file, idx) => (
                                 <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                    <div className="flex-1">
-                                        <div className="font-bold text-gray-700 text-sm truncate">{file.fileName}</div>
-                                        <div className="text-xs text-green-600 font-medium">{file.data.length} tirs détectés</div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-gray-400">→</span>
-                                        <select 
-                                            value={file.playerId} 
-                                            onChange={(e) => updatePendingPlayer(idx, e.target.value)}
-                                            className="bg-white border border-gray-200 text-gray-800 text-sm rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
-                                        >
-                                            {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                        </select>
-                                    </div>
+                                    <div className="flex-1"><div className="font-bold text-gray-700 text-sm truncate">{file.fileName}</div><div className="text-xs text-green-600 font-medium">{file.data.length} tirs détectés</div></div>
+                                    <div className="flex items-center gap-2"><span className="text-xs font-bold text-gray-400">→</span><select value={file.playerId} onChange={(e) => updatePendingPlayer(idx, e.target.value)} className="bg-white border border-gray-200 text-gray-800 text-sm rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500">{players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
                                 </div>
                             ))}
                         </div>
-
-                        <div className="flex justify-end gap-3">
-                            <button onClick={()=>setShowImportModal(false)} className="px-4 py-2 rounded-lg text-gray-500 hover:bg-gray-100 font-bold">Annuler</button>
-                            <button onClick={confirmImport} className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg">Tout Confirmer</button>
-                        </div>
+                        <div className="flex justify-end gap-3"><button onClick={()=>setShowImportModal(false)} className="px-4 py-2 rounded-lg text-gray-500 hover:bg-gray-100 font-bold">Annuler</button><button onClick={confirmImport} className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg">Tout Confirmer</button></div>
                     </div>
                 </div>
             )}
@@ -509,6 +469,20 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
+                            {/* LIGNE TOTAL ÉQUIPE */}
+                            <tr className="bg-slate-100 font-bold border-b-2 border-slate-200">
+                                <td className="p-4 text-left sticky left-0 bg-slate-100 z-10 text-slate-800 uppercase tracking-wider">TOTAL ÉQUIPE</td>
+                                <td className="p-3 border-l border-slate-200 text-purple-800">{teamStats.lf.tr}/{teamStats.lf.tt} <span className="text-xs ml-1 bg-purple-200 px-1 rounded">{formatPct(teamStats.lf.pct)}</span></td>
+                                <td className="p-3 border-l border-slate-200 text-blue-800">{teamStats.global_arret.tr}/{teamStats.global_arret.tt} <span className="text-xs ml-1 bg-blue-200 px-1 rounded">{formatPct(teamStats.global_arret.pct)}</span></td>
+                                <td className="p-3 border-l border-slate-200 text-orange-800">{teamStats.global_mouv.tr}/{teamStats.global_mouv.tt} <span className="text-xs ml-1 bg-orange-200 px-1 rounded">{formatPct(teamStats.global_mouv.pct)}</span></td>
+                                {ZONES_TERRAIN.map(z => (
+                                    <td key={z.id} className="p-3 border-l border-slate-200 text-slate-700">
+                                        {teamStats[z.id].tr}/{teamStats[z.id].tt} <span className="text-xs ml-1 bg-white px-1 rounded border">{formatPct(teamStats[z.id].pct)}</span>
+                                    </td>
+                                ))}
+                            </tr>
+
+                            {/* LIGNES JOUEURS */}
                             {players.map(p => {
                                 const stats = matrix[p.id];
                                 if(!stats || (filterPlayer !== 'all' && p.id != filterPlayer)) return null;
