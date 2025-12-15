@@ -88,7 +88,7 @@ function App() {
             <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
                     <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 flex items-center gap-2">
-                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.7 No-Dupes</span>
+                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v3.8 3pts Default</span>
                     </h1>
                     <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
                         <button onClick={()=>setActiveModule('shooting')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeModule==='shooting'?'bg-white text-blue-600 shadow-md scale-105':'text-gray-500 hover:text-gray-800'}`}>🎯 Saisie</button>
@@ -299,7 +299,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                         date: dateISO,
                         playerId: playerId,
                         zoneId: m.id,
-                        type: '2pt_arret', 
+                        type: '3pt_arret', // <--- CHANGEMENT ICI : PAR DÉFAUT C'EST 3PTS ARRÊT
                         tentes: tt,
                         marques: isNaN(tr) ? 0 : tr
                     });
@@ -319,19 +319,18 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 // 1. Lire le CSV
                 const recs = parseSpecificCSV(evt.target.result, file.name);
                 
-                // 2. CRÉER UNE "SIGNATURE" UNIQUE POUR CHAQUE ENREGISTREMENT EXISTANT
-                // Signature = Date + Player + Zone
+                // 2. CRÉER UNE "SIGNATURE" UNIQUE
                 const existingKeys = new Set(historyData.map(item => 
                     `${item.date}-${item.playerId}-${item.zoneId}`
                 ));
 
-                // 3. FILTRER : Ne garder que ceux dont la signature n'existe pas encore
+                // 3. FILTRER
                 const uniqueRecs = recs.filter(item => {
                     const key = `${item.date}-${item.playerId}-${item.zoneId}`;
                     return !existingKeys.has(key);
                 });
 
-                // 4. METTRE À JOUR OU ALERTER
+                // 4. METTRE À JOUR
                 if(uniqueRecs.length > 0) {
                     setHistoryData([...historyData, ...uniqueRecs]);
                     const skipped = recs.length - uniqueRecs.length;
