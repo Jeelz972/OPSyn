@@ -3,10 +3,10 @@ const firebaseConfig = {
     apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
     authDomain: "statu18elite.firebaseapp.com",
     projectId: "statu18elite",
-    storageBucket: "statu18elite.appspot.com", // J'ai corrigé l'extension ici (.appspot.com est le standard)
+    storageBucket: "statu18elite.firebasestorage.app",
     messagingSenderId: "862850988986",
-    appId: "1:862850988986:web:d64afc2c94eb50a1f6fb83",
-    measurementId: "G-VNEB7Z8ZR1"
+    appId: "1:862850988986:web:47a2b48477015506f6fb83",
+    measurementId: "G-Y4ZDKZQ7F9"
 };
 
 // --- INITIALISATION (Version CDN / Navigateur) ---
