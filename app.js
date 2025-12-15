@@ -88,7 +88,7 @@ function App() {
             <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
                     <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 flex items-center gap-2">
-                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v4.0 TeamStats</span>
+                        🏀 StatElite <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border">v4.1 Style</span>
                     </h1>
                     <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
                         <button onClick={()=>setActiveModule('shooting')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeModule==='shooting'?'bg-white text-blue-600 shadow-md scale-105':'text-gray-500 hover:text-gray-800'}`}>🎯 Saisie</button>
@@ -326,49 +326,71 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
     // --- CALCUL STATS ---
     const calculateStats = () => {
         const matrix = {}; const maxPerZone = {};
-        // Init Team Stats
-        const teamStats = { 'global_arret': {tt:0, tr:0}, 'global_mouv': {tt:0, tr:0}, 'lf': {tt:0, tr:0} };
-        ZONES_TERRAIN.forEach(z => teamStats[z.id] = {tt:0, tr:0});
+        
+        // Structure pour les stats globales (Cards)
+        const teamGlobal = {
+            total: { tt: 0, tr: 0 },
+            cat2pt: { tt: 0, tr: 0 },
+            cat3pt: { tt: 0, tr: 0 },
+            catLF: { tt: 0, tr: 0 }
+        };
+
+        // Structure pour la ligne "Total Équipe" du tableau
+        const teamRow = { 'global_arret': {tt:0, tr:0}, 'global_mouv': {tt:0, tr:0}, 'lf': {tt:0, tr:0} };
+        ZONES_TERRAIN.forEach(z => teamRow[z.id] = {tt:0, tr:0});
 
         players.forEach(p => {
             matrix[p.id] = { 'global_arret': {tt:0, tr:0}, 'global_mouv': {tt:0, tr:0}, 'lf': {tt:0, tr:0} };
             ZONES_TERRAIN.forEach(z => matrix[p.id][z.id] = {tt:0, tr:0});
         });
 
-        // 1. Filtrer par Date UNIQUEMENT pour les stats d'équipe
+        // 1. Filtrer par Date
         let dateFiltered = [...historyData];
         if(startDate) dateFiltered = dateFiltered.filter(d => d.date >= startDate);
         if(endDate) dateFiltered = dateFiltered.filter(d => d.date <= endDate);
 
-        // 2. Calculer Stats Équipe (Tous les joueurs dans la période)
+        // 2. Calculs (Stats globales + Matrix)
         dateFiltered.forEach(d => {
             const type = SHOT_TYPES.find(t=>t.id === d.type);
+            
+            // --- Calculs Globaux (Cards) ---
+            teamGlobal.total.tt += d.tentes;
+            teamGlobal.total.tr += d.marques;
+            
             if(d.zoneId === 'zone_lf') {
-                teamStats['lf'].tt += d.tentes; teamStats['lf'].tr += d.marques;
-            } else if (teamStats[d.zoneId]) {
-                teamStats[d.zoneId].tt += d.tentes; teamStats[d.zoneId].tr += d.marques;
+                teamGlobal.catLF.tt += d.tentes; teamGlobal.catLF.tr += d.marques;
+            } else if (type) {
+                if(type.cat === '2pt') { teamGlobal.cat2pt.tt += d.tentes; teamGlobal.cat2pt.tr += d.marques; }
+                if(type.cat === '3pt') { teamGlobal.cat3pt.tt += d.tentes; teamGlobal.cat3pt.tr += d.marques; }
+            }
+
+            // --- Calculs Ligne Équipe Tableau ---
+            if(d.zoneId === 'zone_lf') {
+                teamRow['lf'].tt += d.tentes; teamRow['lf'].tr += d.marques;
+            } else if (teamRow[d.zoneId]) {
+                teamRow[d.zoneId].tt += d.tentes; teamRow[d.zoneId].tr += d.marques;
                 const key = type?.mouv ? 'global_mouv' : 'global_arret';
-                teamStats[key].tt += d.tentes; teamStats[key].tr += d.marques;
+                teamRow[key].tt += d.tentes; teamRow[key].tr += d.marques;
+            }
+
+            // --- Calculs Matrix Joueurs ---
+            if(filterPlayer === 'all' || d.playerId == filterPlayer) {
+                if(matrix[d.playerId]) {
+                    if(d.zoneId === 'zone_lf') {
+                        matrix[d.playerId]['lf'].tt += d.tentes; matrix[d.playerId]['lf'].tr += d.marques;
+                    } else if (matrix[d.playerId][d.zoneId]) {
+                        matrix[d.playerId][d.zoneId].tt += d.tentes; matrix[d.playerId][d.zoneId].tr += d.marques;
+                        const key = type?.mouv ? 'global_mouv' : 'global_arret';
+                        matrix[d.playerId][key].tt += d.tentes; matrix[d.playerId][key].tr += d.marques;
+                    }
+                }
             }
         });
-        Object.keys(teamStats).forEach(k => { teamStats[k].pct = teamStats[k].tt > 0 ? (teamStats[k].tr/teamStats[k].tt)*100 : 0; });
 
-        // 3. Filtrer par Joueur pour la matrice individuelle
-        let playerFiltered = dateFiltered;
-        if(filterPlayer !== 'all') playerFiltered = playerFiltered.filter(d => d.playerId == filterPlayer);
+        // Calculs Percentages TeamRow
+        Object.keys(teamRow).forEach(k => { teamRow[k].pct = teamRow[k].tt > 0 ? (teamRow[k].tr/teamRow[k].tt)*100 : 0; });
 
-        playerFiltered.forEach(d => {
-            if(!matrix[d.playerId]) return;
-            const type = SHOT_TYPES.find(t=>t.id === d.type);
-            if(d.zoneId === 'zone_lf') {
-                matrix[d.playerId]['lf'].tt += d.tentes; matrix[d.playerId]['lf'].tr += d.marques;
-            } else if (matrix[d.playerId][d.zoneId]) {
-                matrix[d.playerId][d.zoneId].tt += d.tentes; matrix[d.playerId][d.zoneId].tr += d.marques;
-                const key = type?.mouv ? 'global_mouv' : 'global_arret';
-                matrix[d.playerId][key].tt += d.tentes; matrix[d.playerId][key].tr += d.marques;
-            }
-        });
-
+        // Calculs Percentages Matrix + Max
         Object.keys(matrix).forEach(pid => {
             Object.keys(matrix[pid]).forEach(zid => {
                 const cell = matrix[pid][zid];
@@ -376,19 +398,11 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 if(cell.tt > 0) { if(!maxPerZone[zid] || cell.pct > maxPerZone[zid].pct) maxPerZone[zid] = { pct: cell.pct, playerId: pid }; }
             });
         });
-        
-        // Calcul Total Global pour la carte résumé
-        let totalTT = 0, totalTR = 0;
-        // On somme les totaux de l'objet teamStats (Attention à ne pas double compter)
-        // On prend les zones + LF
-        ZONES_TERRAIN.forEach(z => { totalTT += teamStats[z.id].tt; totalTR += teamStats[z.id].tr; });
-        totalTT += teamStats.lf.tt; totalTR += teamStats.lf.tr;
-        const globalPct = totalTT > 0 ? Math.round((totalTR/totalTT)*100) : 0;
 
-        return { matrix, maxPerZone, teamStats, globalPct, totalTT, totalTR };
+        return { matrix, maxPerZone, teamRow, teamGlobal };
     };
 
-    const { matrix, maxPerZone, teamStats, globalPct, totalTT, totalTR } = calculateStats();
+    const { matrix, maxPerZone, teamRow, teamGlobal } = calculateStats();
     const formatPct = (n) => n.toFixed(0) + '%';
     const setQuickRange = (type) => {
         const now = new Date();
@@ -399,6 +413,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
 
     return (
         <div className="space-y-6">
+            {/* FILTRES */}
             <div className="bg-white p-4 rounded-3xl shadow-lg border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4 animate-slide-up">
                 <div className="flex items-center gap-2 w-full md:w-auto">
                     <span className="text-gray-400 font-bold text-xs uppercase">Joueur:</span>
@@ -420,24 +435,42 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            <div className="flex justify-between items-center">
-                <div className="bg-white px-6 py-2 rounded-xl shadow-sm border border-gray-100 flex gap-6 items-center">
-                    <div>
-                        <span className="block text-xs font-bold text-gray-400 uppercase">Total Équipe</span>
-                        <span className="text-xl font-black text-gray-800">{totalTR}/{totalTT}</span>
-                    </div>
-                    <div className="h-8 w-px bg-gray-200"></div>
-                    <div>
-                        <span className="block text-xs font-bold text-gray-400 uppercase">Réussite</span>
-                        <span className={`text-xl font-black ${globalPct >= 50 ? 'text-green-500' : 'text-blue-500'}`}>{globalPct}%</span>
-                    </div>
+            {/* STATS GLOBALES (CARTES STYLE ORIGINAL) */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-2 animate-fade-in">
+                <div className="bg-blue-50 p-4 rounded-xl text-center shadow-sm border border-blue-100">
+                    <div className="text-3xl font-black text-blue-600">{teamGlobal.total.tt}</div>
+                    <div className="text-xs font-bold text-blue-400 uppercase">Tirs Totaux</div>
                 </div>
+                <div className="bg-green-50 p-4 rounded-xl text-center shadow-sm border border-green-100">
+                    <div className="text-3xl font-black text-green-600">{teamGlobal.total.tt > 0 ? Math.round((teamGlobal.total.tr/teamGlobal.total.tt)*100) : 0}%</div>
+                    <div className="text-xs font-bold text-green-400 uppercase">Réussite Globale</div>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-xl text-center shadow-sm border border-yellow-100">
+                    <div className="text-2xl font-bold text-yellow-600">{teamGlobal.cat2pt.tr}/{teamGlobal.cat2pt.tt}</div>
+                    <div className="text-sm font-bold text-yellow-500">{teamGlobal.cat2pt.tt > 0 ? Math.round((teamGlobal.cat2pt.tr/teamGlobal.cat2pt.tt)*100) : 0}%</div>
+                    <div className="text-[10px] font-bold text-yellow-400 uppercase mt-1">2 Points</div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-xl text-center shadow-sm border border-purple-100">
+                    <div className="text-2xl font-bold text-purple-600">{teamGlobal.cat3pt.tr}/{teamGlobal.cat3pt.tt}</div>
+                    <div className="text-sm font-bold text-purple-500">{teamGlobal.cat3pt.tt > 0 ? Math.round((teamGlobal.cat3pt.tr/teamGlobal.cat3pt.tt)*100) : 0}%</div>
+                    <div className="text-[10px] font-bold text-purple-400 uppercase mt-1">3 Points</div>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-xl text-center shadow-sm border border-orange-100">
+                    <div className="text-2xl font-bold text-orange-600">{teamGlobal.catLF.tr}/{teamGlobal.catLF.tt}</div>
+                    <div className="text-sm font-bold text-orange-500">{teamGlobal.catLF.tt > 0 ? Math.round((teamGlobal.catLF.tr/teamGlobal.catLF.tt)*100) : 0}%</div>
+                    <div className="text-[10px] font-bold text-orange-400 uppercase mt-1">Lancers Francs</div>
+                </div>
+            </div>
+
+            {/* IMPORT BTN */}
+            <div className="flex justify-end">
                 <label className="cursor-pointer bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-sm shadow hover:bg-slate-700 transition flex items-center gap-2 transform active:scale-95">
                     <span>📂 Importer CSV (Multi)</span>
                     <input type="file" accept=".csv" multiple className="hidden" onChange={handleFileSelect} />
                 </label>
             </div>
 
+            {/* MODAL IMPORT */}
             {showImportModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-fade-in">
@@ -455,6 +488,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             )}
 
+            {/* TABLEAU */}
             <div className="bg-white rounded-3xl shadow-xl overflow-hidden animate-fade-in border border-gray-100">
                 <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><h2 className="font-black text-xl text-gray-800">🏆 Leaderboard</h2><span className="text-xs text-gray-400 bg-white px-2 py-1 rounded border">👑 = Leader de la zone</span></div>
                 <div className="overflow-x-auto">
@@ -471,13 +505,13 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                         <tbody className="divide-y divide-gray-100">
                             {/* LIGNE TOTAL ÉQUIPE */}
                             <tr className="bg-slate-100 font-bold border-b-2 border-slate-200">
-                                <td className="p-4 text-left sticky left-0 bg-slate-100 z-10 text-slate-800 uppercase tracking-wider">TOTAL ÉQUIPE</td>
-                                <td className="p-3 border-l border-slate-200 text-purple-800">{teamStats.lf.tr}/{teamStats.lf.tt} <span className="text-xs ml-1 bg-purple-200 px-1 rounded">{formatPct(teamStats.lf.pct)}</span></td>
-                                <td className="p-3 border-l border-slate-200 text-blue-800">{teamStats.global_arret.tr}/{teamStats.global_arret.tt} <span className="text-xs ml-1 bg-blue-200 px-1 rounded">{formatPct(teamStats.global_arret.pct)}</span></td>
-                                <td className="p-3 border-l border-slate-200 text-orange-800">{teamStats.global_mouv.tr}/{teamStats.global_mouv.tt} <span className="text-xs ml-1 bg-orange-200 px-1 rounded">{formatPct(teamStats.global_mouv.pct)}</span></td>
+                                <td className="p-4 text-left sticky left-0 bg-slate-100 z-10 text-slate-800 uppercase tracking-wider shadow-r">TOTAL ÉQUIPE</td>
+                                <td className="p-3 border-l border-slate-200 text-purple-800">{teamRow.lf.tr}/{teamRow.lf.tt} <span className="text-xs ml-1 bg-purple-200 px-1 rounded">{formatPct(teamRow.lf.pct)}</span></td>
+                                <td className="p-3 border-l border-slate-200 text-blue-800">{teamRow.global_arret.tr}/{teamRow.global_arret.tt} <span className="text-xs ml-1 bg-blue-200 px-1 rounded">{formatPct(teamRow.global_arret.pct)}</span></td>
+                                <td className="p-3 border-l border-slate-200 text-orange-800">{teamRow.global_mouv.tr}/{teamRow.global_mouv.tt} <span className="text-xs ml-1 bg-orange-200 px-1 rounded">{formatPct(teamRow.global_mouv.pct)}</span></td>
                                 {ZONES_TERRAIN.map(z => (
                                     <td key={z.id} className="p-3 border-l border-slate-200 text-slate-700">
-                                        {teamStats[z.id].tr}/{teamStats[z.id].tt} <span className="text-xs ml-1 bg-white px-1 rounded border">{formatPct(teamStats[z.id].pct)}</span>
+                                        {teamRow[z.id].tr}/{teamRow[z.id].tt} <span className="text-xs ml-1 bg-white px-1 rounded border">{formatPct(teamRow[z.id].pct)}</span>
                                     </td>
                                 ))}
                             </tr>
