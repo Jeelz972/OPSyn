@@ -26,13 +26,13 @@ const ZONE_MAPPING = {
 };
 
 const ZONES_DISPLAY = [
-    { key: '0G', name: '0° G', color: 'from-blue-500 to-blue-600', id:'gauche_0' },
-    { key: '45G', name: '45° G', color: 'from-emerald-400 to-emerald-600', id:'gauche_45' },
-    { key: '70G', name: '70° G', color: 'from-cyan-400 to-cyan-600', id:'gauche_70' },
-    { key: 'Axe', name: 'Axe', color: 'from-indigo-500 to-indigo-600', id:'axe' },
-    { key: '70D', name: '70° D', color: 'from-red-500 to-red-600', id:'droit_70' },
-    { key: '45D', name: '45° D', color: 'from-amber-400 to-amber-600', id:'droit_45' },
-    { key: '0D', name: '0° D', color: 'from-pink-500 to-pink-600', id:'droit_0' }
+    { key: '0G', name: '0° G', id:'gauche_0' },
+    { key: '45G', name: '45° G', id:'gauche_45' },
+    { key: '70G', name: '70° G', id:'gauche_70' },
+    { key: 'Axe', name: 'Axe', id:'axe' },
+    { key: '70D', name: '70° D', id:'droit_70' },
+    { key: '45D', name: '45° D', id:'droit_45' },
+    { key: '0D', name: '0° D', id:'droit_0' }
 ];
 
 const INITIAL_PLAYERS = [
@@ -42,85 +42,105 @@ const INITIAL_PLAYERS = [
     { id: 10, name: 'Thierno' }, { id: 11, name: 'Peniel' }, { id: 12, name: 'Nat' }
 ];
 
-// --- COMPOSANT HEATMAP SVG ---
+// --- COMPOSANT HEATMAP PRO (SVG) ---
 const HalfCourtHeatmap = ({ stats }) => {
-    // Fonction pour déterminer la couleur en fonction du %
+    
+    // Fonction couleur (Gradient Bleu -> Jaune -> Rouge)
     const getColor = (pct) => {
-        if (pct === null || isNaN(pct)) return "#e5e7eb"; // Gris (Pas de donnée)
-        if (pct >= 60) return "#ef4444"; // Rouge (Chaud)
-        if (pct >= 50) return "#f97316"; // Orange
-        if (pct >= 40) return "#eab308"; // Jaune
-        if (pct >= 30) return "#3b82f6"; // Bleu
-        return "#1d4ed8"; // Bleu Foncé (Froid)
+        if (pct === null || isNaN(pct)) return "#f3f4f6"; // Gris clair (Vide)
+        if (pct >= 60) return "#dc2626"; // Rouge Vif (Elite)
+        if (pct >= 50) return "#ea580c"; // Orange (Très bon)
+        if (pct >= 40) return "#facc15"; // Jaune (Moyen)
+        if (pct >= 30) return "#60a5fa"; // Bleu clair (Faible)
+        return "#1e3a8a"; // Bleu fonce (Mauvais)
     };
 
-    // Chemins SVG approximatifs pour les zones (Demi-terrain 500x470)
-    // Panier vers (250, 420) pour vue de face (ou 250, 50 pour vue du dessus standard).
-    // On va faire vue du dessus : Panier en haut (250, 60).
+    // Chemins SVG précis pour les zones (Vue du dessus, Panier en haut)
+    // Canvas 500x400. Panier à (250, 50).
     const paths = {
-        '0G': "M20,60 L100,60 L100,200 Z", // Coin Gauche (Approximation visuelle)
-        '0D': "M480,60 L400,60 L400,200 Z", // Coin Droit
-        '45G': "M100,60 L180,60 L160,250 L60,200 Z", 
-        '45D': "M400,60 L320,60 L340,250 L440,200 Z",
-        '70G': "M180,60 L220,60 L230,300 L160,250 Z",
-        '70D': "M320,60 L280,60 L270,300 L340,250 Z",
-        'Axe': "M220,60 L280,60 L270,300 L230,300 Z", 
+        '0G': "M20,50 L90,50 L90,180 L20,180 Z", // Corner Gauche
+        '0D': "M410,50 L480,50 L480,180 L410,180 Z", // Corner Droit
+        '45G': "M90,50 L180,50 L160,250 L20,180 Z", // Aile Gauche
+        '45D': "M320,50 L410,50 L480,180 L340,250 Z", // Aile Droite
+        '70G': "M180,50 L220,50 L230,280 L160,250 Z", // Elbow Gauche
+        '70D': "M280,50 L320,50 L340,250 L270,280 Z", // Elbow Droit
+        'Axe': "M220,50 L280,50 L270,280 L230,280 Z", // Top Axe
     };
-    
-    // Coordinates for text labels
+
+    // Position des labels (Texte)
     const labels = {
-        '0G': {x: 60, y: 120}, '0D': {x: 440, y: 120},
-        '45G': {x: 120, y: 180}, '45D': {x: 380, y: 180},
-        '70G': {x: 190, y: 220}, '70D': {x: 310, y: 220},
-        'Axe': {x: 250, y: 250}
+        '0G': {x: 55, y: 120}, '0D': {x: 445, y: 120},
+        '45G': {x: 110, y: 180}, '45D': {x: 390, y: 180},
+        '70G': {x: 185, y: 220}, '70D': {x: 315, y: 220},
+        'Axe': {x: 250, y: 240}
     };
 
     return (
-        <svg viewBox="0 0 500 400" className="w-full h-full bg-white rounded-xl shadow-inner border border-gray-200">
-            {/* Terrain Lignes */}
-            <rect x="0" y="0" width="500" height="400" fill="none" stroke="#cbd5e1" strokeWidth="2" />
-            {/* Ligne 3pts (Arc) */}
-            <path d="M40,60 L40,150 Q250,450 460,150 L460,60" fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="5,5"/>
-            {/* Raquette */}
-            <rect x="170" y="0" width="160" height="190" fill="none" stroke="#94a3b8" strokeWidth="2" />
-            {/* Panier */}
-            <circle cx="250" cy="60" r="10" stroke="#f97316" strokeWidth="3" fill="none" />
-            <rect x="220" y="50" width="60" height="2" fill="#f97316" />
+        <div className="relative w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+            <svg viewBox="0 0 500 400" className="w-full h-full">
+                {/* --- DESSIN DU TERRAIN --- */}
+                {/* Fond Sol */}
+                <rect x="0" y="0" width="500" height="400" fill="white" />
+                
+                {/* Zone 3 Points (Arc) */}
+                <path d="M40,50 L40,140 Q250,400 460,140 L460,50" fill="none" stroke="#e5e7eb" strokeWidth="2" strokeDasharray="5,5"/>
+                
+                {/* Raquette (Peinture) */}
+                <rect x="170" y="50" width="160" height="190" fill="none" stroke="#cbd5e1" strokeWidth="2" />
+                <circle cx="250" cy="190" r="60" fill="none" stroke="#cbd5e1" strokeWidth="2" />
+                
+                {/* Panier & Planche */}
+                <line x1="220" y1="40" x2="280" y2="40" stroke="#0f172a" strokeWidth="4" />
+                <circle cx="250" cy="50" r="10" stroke="#ea580c" strokeWidth="3" fill="none" />
 
-            {/* Zones Heatmap */}
-            {ZONES_DISPLAY.map(z => {
-                // On mappe les ID d'affichage aux stats
-                // ZONES_DISPLAY utilise 'key' (ex: 0G), stats utilise 'key' aussi
-                const data = stats[z.key] || {tt:0, tr:0};
-                const pct = data.tt > 0 ? (data.tr/data.tt)*100 : null;
+                {/* --- ZONES INTERACTIVES --- */}
+                {ZONES_DISPLAY.map(z => {
+                    const data = stats[z.key] || {tt:0, tr:0};
+                    const pct = data.tt > 0 ? (data.tr/data.tt)*100 : null;
+                    
+                    return (
+                        <g key={z.key} className="group">
+                            {/* Forme de la zone */}
+                            <path 
+                                d={paths[z.key]} 
+                                fill={getColor(pct)} 
+                                stroke="white" 
+                                strokeWidth="3"
+                                className="transition-all duration-300 opacity-90 group-hover:opacity-100 group-hover:scale-[1.02] origin-center cursor-pointer"
+                            />
+                            
+                            {/* Label % */}
+                            <text x={labels[z.key].x} y={labels[z.key].y} textAnchor="middle" fill={pct > 50 ? "white" : "#1e293b"} fontSize="14" fontWeight="900" style={{textShadow: "0px 1px 2px rgba(0,0,0,0.1)"}}>
+                                {pct !== null ? `${Math.round(pct)}%` : '-'}
+                            </text>
+                            
+                            {/* Label Fraction (Réussis/Tentés) - Visible au survol */}
+                            <text x={labels[z.key].x} y={labels[z.key].y + 15} textAnchor="middle" fill={pct > 50 ? "white" : "#475569"} fontSize="10" fontWeight="bold">
+                                {data.tr}/{data.tt}
+                            </text>
+                        </g>
+                    );
+                })}
                 
-                // Dessin simple : Cercles positionnés aux zones (plus simple et propre que des polygones complexes pour l'instant)
-                // Pour une vraie heatmap "surface", il faudrait des path complexes.
-                // Ici on met des indicateurs colorés.
-                const pos = labels[z.key];
-                
-                return (
-                    <g key={z.key}>
-                        <circle cx={pos.x} cy={pos.y} r="35" fill={getColor(pct)} fillOpacity="0.9" stroke="white" strokeWidth="2" className="transition-all duration-500 hover:scale-110 cursor-pointer"/>
-                        <text x={pos.x} y={pos.y-5} textAnchor="middle" fill="white" fontSize="12" fontWeight="bold">{z.key}</text>
-                        <text x={pos.x} y={pos.y+10} textAnchor="middle" fill="white" fontSize="10">
-                            {pct !== null ? `${Math.round(pct)}%` : '-'}
-                        </text>
-                        <text x={pos.x} y={pos.y+22} textAnchor="middle" fill="white" fontSize="8" opacity="0.8">
-                            {data.tr}/{data.tt}
-                        </text>
-                    </g>
-                );
-            })}
-        </svg>
+                {/* Légende du bas */}
+                <text x="250" y="380" textAnchor="middle" fontSize="10" fill="#94a3b8">VUE DU DESSUS • ATTAQUE ↓</text>
+            </svg>
+        </div>
     );
 };
 
-// --- LOGIQUE MIGRATION ---
+// --- LOGIQUE MIGRATION & RESTE DE L'APP ---
+const SHOT_TYPES = [
+    { id: '2pt_arret', label: '2pts Arrêt', points: 2, icon: '🛑', cat: '2pt', mouv: false },
+    { id: '2pt_mouv', label: '2pts Mouv.', points: 2, icon: '🏃', cat: '2pt', mouv: true },
+    { id: '3pt_arret', label: '3pts Arrêt', points: 3, icon: '🛑', cat: '3pt', mouv: false },
+    { id: '3pt_mouv', label: '3pts Mouv.', points: 3, icon: '🏃', cat: '3pt', mouv: true },
+    { id: '1pt_lancer', label: 'Lancer Franc', points: 1, icon: '🏀', cat: 'lf', mouv: false }
+];
+
 const migrateData = (oldData) => {
     if (!oldData || oldData.length === 0) return [];
     if (oldData[0].zones && oldData[0].zones.Distance) return oldData;
-    
     const newDataMap = {};
     oldData.forEach(item => {
         let dist = "2pt", typ = "arrêt";
@@ -130,12 +150,7 @@ const migrateData = (oldData) => {
             if (item.type.includes('mouv')) typ = "mouvement";
         }
         const key = `${item.date}-${item.playerId}-${dist}-${typ}`;
-        if (!newDataMap[key]) {
-            newDataMap[key] = {
-                id: key, playerId: item.playerId, date: item.date,
-                zones: { Distance: dist, types: typ }
-            };
-        }
+        if (!newDataMap[key]) { newDataMap[key] = { id: key, playerId: item.playerId, date: item.date, zones: { Distance: dist, types: typ } }; }
         const zoneKey = ZONE_MAPPING[item.zoneId] || 'Axe';
         if (!newDataMap[key].zones[zoneKey]) newDataMap[key].zones[zoneKey] = { made: 0, attempted: 0 };
         newDataMap[key].zones[zoneKey].made += (item.marques || 0);
@@ -144,7 +159,7 @@ const migrateData = (oldData) => {
     return Object.values(newDataMap).map(d => ({ ...d, id: Date.now().toString(36) + Math.random().toString(36).substr(2) }));
 };
 
-// --- MAIN COMPONENT ---
+// --- APP ---
 function App() {
     const [activeModule, setActiveModule] = useState('shooting');
     const [players, setPlayers] = useState(INITIAL_PLAYERS);
@@ -158,9 +173,7 @@ function App() {
         if (p) setPlayers(JSON.parse(p));
     }, []);
 
-    const updateData = (key, data, setter) => {
-        setter(data); localStorage.setItem(key, JSON.stringify(data));
-    };
+    const updateData = (key, data, setter) => { setter(data); localStorage.setItem(key, JSON.stringify(data)); };
 
     const handleCloud = async (mode) => {
         if (!db) return alert("Firebase non configuré");
@@ -184,22 +197,18 @@ function App() {
     };
 
     return (
-        <div className="min-h-screen pb-12 bg-gradient-to-br from-slate-50 to-slate-200 font-sans text-slate-800">
-            {/* HEADER */}
-            <div className="bg-white/90 backdrop-blur sticky top-0 z-50 border-b border-gray-200 shadow-sm px-4 py-3 flex justify-between items-center">
-                <h1 className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-purple-600">
-                    🏀 StatElite <span className="text-xs bg-gray-100 text-gray-500 px-2 rounded-full border">v6.0 Heatmap</span>
-                </h1>
+        <div className="min-h-screen pb-12 bg-gray-50 font-sans text-slate-800">
+            <div className="bg-white sticky top-0 z-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center shadow-sm">
+                <h1 className="text-xl font-black text-slate-800">🏀 StatElite <span className="text-xs text-gray-400 font-normal">v6.1 ProMap</span></h1>
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                     <button onClick={()=>setActiveModule('shooting')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shooting'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Saisie</button>
                     <button onClick={()=>setActiveModule('analysis')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='analysis'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Analyse</button>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={()=>handleCloud('save')} disabled={isSyncing} className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">{isSyncing?'...':'☁️'}</button>
-                    <button onClick={()=>handleCloud('load')} disabled={isSyncing} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">📥</button>
+                    <button onClick={()=>handleCloud('save')} disabled={isSyncing} className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold">{isSyncing?'...':'Save'}</button>
+                    <button onClick={()=>handleCloud('load')} disabled={isSyncing} className="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Load</button>
                 </div>
             </div>
-
             <div className="max-w-7xl mx-auto p-4 md:p-6 animate-fade-in">
                 {activeModule === 'shooting' && <ShootingModule players={players} setPlayers={(p)=>updateData('basketball_players',p,setPlayers)} historyData={historyData} setHistoryData={(h)=>updateData('basketball_history',h,setHistoryData)} />}
                 {activeModule === 'analysis' && <AnalysisModule players={players} historyData={historyData} setHistoryData={(h)=>updateData('basketball_history',h,setHistoryData)} />}
@@ -229,10 +238,8 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     const saveShot = () => {
         const tt = parseInt(tentes), tr = parseInt(marques);
         if(!selectedPlayer || !selectedZoneKey || isNaN(tt) || tt===0 || tr>tt) return alert("Erreur de saisie.");
-        
         const newData = [...historyData];
         const existingIndex = newData.findIndex(d => d.date === date && d.playerId === parseInt(selectedPlayer) && d.zones.Distance === distance && d.zones.types === typeTir);
-
         if (existingIndex >= 0) {
             const session = newData[existingIndex];
             if (!session.zones[selectedZoneKey]) session.zones[selectedZoneKey] = { made: 0, attempted: 0 };
@@ -240,15 +247,10 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
             session.zones[selectedZoneKey].attempted += tt;
             newData[existingIndex] = { ...session };
         } else {
-            newData.push({
-                id: Date.now().toString(36), playerId: parseInt(selectedPlayer), date,
-                zones: { Distance: distance, types: typeTir, [selectedZoneKey]: { made: tr, attempted: tt } }
-            });
+            newData.push({ id: Date.now().toString(36), playerId: parseInt(selectedPlayer), date, zones: { Distance: distance, types: typeTir, [selectedZoneKey]: { made: tr, attempted: tt } } });
         }
-        setHistoryData(newData);
-        setTentes(''); setMarques('');
-        const btn = document.getElementById('validBtn');
-        if(btn) { btn.innerText = "✅ OK"; setTimeout(()=>btn.innerText = "VALIDER", 800); }
+        setHistoryData(newData); setTentes(''); setMarques('');
+        const btn = document.getElementById('validBtn'); if(btn) { btn.innerText = "✅ OK"; setTimeout(()=>btn.innerText = "VALIDER", 800); }
     };
 
     const addPlayer = () => { if(newPlayer.trim()) { setPlayers([...players, {id:Date.now(), name: newPlayer}]); setNewPlayer(''); } };
@@ -275,7 +277,6 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
                     </div>
                     <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="bg-gray-50 font-bold text-gray-600 rounded-xl px-4 py-2 outline-none text-sm"/>
                 </div>
-
                 <div className={`bg-white rounded-3xl shadow-xl border-4 p-6 ${mode==='lf'?'border-purple-100':'border-blue-100'}`}>
                     {mode === 'field' && (
                         <div className="flex justify-center gap-4 mb-6">
@@ -330,12 +331,11 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
     const deleteSession = (id) => { if(confirm("Supprimer ?")) setHistoryData(historyData.filter(d => d.id !== id)); };
 
     const calculateStats = () => {
-        // Init
         const matrix = {}; 
         const teamStats = { 
             '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, total:{tt:0,tr:0},
-            'arret':{tt:0,tr:0}, 'mouv':{tt:0,tr:0},
-            zones: {} // Pour heatmap équipe
+            'arret':{tt:0,tr:0}, 'mouvement':{tt:0,tr:0}, // Correction clé "mouvement"
+            zones: {} 
         };
         ZONES_DISPLAY.forEach(z => teamStats.zones[z.key] = {tt:0, tr:0});
 
@@ -349,8 +349,8 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
         if(endDate) filtered = filtered.filter(d => d.date <= endDate);
 
         filtered.forEach(session => {
-            const dist = session.zones.Distance; // 2pt, 3pt, LF
-            const typ = session.zones.types; // arrêt, mouvement
+            const dist = session.zones.Distance;
+            const typ = session.zones.types; // 'arrêt' ou 'mouvement'
             const pid = session.playerId;
 
             Object.keys(session.zones).forEach(key => {
@@ -359,14 +359,9 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 if(!stats || stats.attempted === 0) return;
 
                 // TEAM GLOBAL
-                teamStats.total.tt += stats.attempted;
-                teamStats.total.tr += stats.made;
+                teamStats.total.tt += stats.attempted; teamStats.total.tr += stats.made;
                 if(teamStats[dist]) { teamStats[dist].tt += stats.attempted; teamStats[dist].tr += stats.made; }
-                
-                // Type (Arrêt vs Mouv)
-                if(typ && teamStats[typ]) { teamStats[typ].tt += stats.attempted; teamStats[typ].tr += stats.made; }
-
-                // Zones Heatmap Equipe
+                if(teamStats[typ]) { teamStats[typ].tt += stats.attempted; teamStats[typ].tr += stats.made; } // Correction ici
                 if(teamStats.zones[key]) { teamStats.zones[key].tt += stats.attempted; teamStats.zones[key].tr += stats.made; }
 
                 // INDIVIDUAL
@@ -377,9 +372,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
             });
         });
 
-        // Determine stats to show in Heatmap
         const heatmapStats = filterPlayer === 'all' ? teamStats.zones : (matrix[filterPlayer] ? matrix[filterPlayer].zones : {});
-
         const recentSessions = [...filtered].sort((a,b) => new Date(b.date) - new Date(a.date));
         return { matrix, teamStats, recentSessions, heatmapStats };
     };
@@ -389,7 +382,6 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
 
     return (
         <div className="space-y-6">
-            {/* FILTRES */}
             <div className="bg-white p-4 rounded-xl shadow flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex gap-2 items-center">
                     <span className="font-bold text-sm text-gray-500">Joueur :</span>
@@ -412,40 +404,53 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            {/* SECTION HAUTE : HEATMAP + KPI */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                
-                {/* GAUCHE : HEATMAP */}
-                <div className="md:col-span-7 lg:col-span-8 h-80 md:h-96">
+                {/* HEATMAP (GAUCHE) */}
+                <div className="md:col-span-7 h-[400px]">
                     <HalfCourtHeatmap stats={heatmapStats} />
                 </div>
 
-                {/* DROITE : KPI CARDS */}
-                <div className="md:col-span-5 lg:col-span-4 grid grid-cols-1 gap-3">
-                    <div className="bg-slate-900 p-4 rounded-xl text-white shadow-lg flex justify-between items-center">
+                {/* KPI CARDS (DROITE) - Mise en avant demandée */}
+                <div className="md:col-span-5 grid grid-cols-1 gap-3 content-start">
+                    <div className="bg-slate-900 p-4 rounded-xl text-white shadow-lg flex justify-between items-center mb-2">
                         <div><div className="text-xs text-slate-400 font-bold uppercase">Total Tirs</div><div className="text-2xl font-black">{teamStats.total.tr}/{teamStats.total.tt}</div></div>
                         <div className="text-3xl font-black text-green-400">{formatPct(teamStats.total.tr, teamStats.total.tt)}</div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white p-3 rounded-xl shadow border-l-4 border-yellow-500">
-                            <div className="text-gray-400 text-[10px] font-bold uppercase">2 Pts</div>
-                            <div className="text-lg font-bold text-gray-800">{teamStats['2pt'].tr}/{teamStats['2pt'].tt}</div>
-                            <div className="text-xs font-bold text-yellow-500">{formatPct(teamStats['2pt'].tr, teamStats['2pt'].tt)}</div>
+                    
+                    {/* PAR DISTANCE */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-500 text-center">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase">2 Pts</div>
+                            <div className="font-bold text-gray-800">{teamStats['2pt'].tr}/{teamStats['2pt'].tt}</div>
+                            <div className="text-xs font-black text-yellow-600">{formatPct(teamStats['2pt'].tr, teamStats['2pt'].tt)}</div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl shadow border-l-4 border-purple-500">
-                            <div className="text-gray-400 text-[10px] font-bold uppercase">3 Pts</div>
-                            <div className="text-lg font-bold text-gray-800">{teamStats['3pt'].tr}/{teamStats['3pt'].tt}</div>
-                            <div className="text-xs font-bold text-purple-500">{formatPct(teamStats['3pt'].tr, teamStats['3pt'].tt)}</div>
+                        <div className="bg-purple-50 p-3 rounded-lg border-l-4 border-purple-500 text-center">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase">3 Pts</div>
+                            <div className="font-bold text-gray-800">{teamStats['3pt'].tr}/{teamStats['3pt'].tt}</div>
+                            <div className="text-xs font-black text-purple-600">{formatPct(teamStats['3pt'].tr, teamStats['3pt'].tt)}</div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl shadow border-l-4 border-orange-500">
-                            <div className="text-gray-400 text-[10px] font-bold uppercase">Lancers</div>
-                            <div className="text-lg font-bold text-gray-800">{teamStats['LF'].tr}/{teamStats['LF'].tt}</div>
-                            <div className="text-xs font-bold text-orange-500">{formatPct(teamStats['LF'].tr, teamStats['LF'].tt)}</div>
+                        <div className="bg-orange-50 p-3 rounded-lg border-l-4 border-orange-500 text-center">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase">LF</div>
+                            <div className="font-bold text-gray-800">{teamStats['LF'].tr}/{teamStats['LF'].tt}</div>
+                            <div className="text-xs font-black text-orange-600">{formatPct(teamStats['LF'].tr, teamStats['LF'].tt)}</div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl shadow border-l-4 border-blue-500">
-                            <div className="text-gray-400 text-[10px] font-bold uppercase">En Jeu (Arrêt+Mouv)</div>
-                            <div className="text-lg font-bold text-gray-800">{teamStats['arret'].tr + teamStats['mouv'].tr}/{teamStats['arret'].tt + teamStats['mouv'].tt}</div>
-                            <div className="text-[10px] text-gray-400">Arrêt: {formatPct(teamStats['arret'].tr, teamStats['arret'].tt)} | Mouv: {formatPct(teamStats['mouv'].tr, teamStats['mouv'].tt)}</div>
+                    </div>
+
+                    {/* PAR TYPE (ARRÊT / MOUVEMENT) */}
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 flex justify-between items-center">
+                            <div>
+                                <div className="text-[10px] font-bold text-gray-400 uppercase">Tirs Arrêt 🛑</div>
+                                <div className="font-bold text-gray-800">{teamStats['arret'].tr}/{teamStats['arret'].tt}</div>
+                            </div>
+                            <div className="text-xl font-black text-blue-600">{formatPct(teamStats['arret'].tr, teamStats['arret'].tt)}</div>
+                        </div>
+                        <div className="bg-red-50 p-3 rounded-lg border-l-4 border-red-500 flex justify-between items-center">
+                            <div>
+                                <div className="text-[10px] font-bold text-gray-400 uppercase">Tirs Mouv 🏃</div>
+                                <div className="font-bold text-gray-800">{teamStats['mouvement'].tr}/{teamStats['mouvement'].tt}</div>
+                            </div>
+                            <div className="text-xl font-black text-red-600">{formatPct(teamStats['mouvement'].tr, teamStats['mouvement'].tt)}</div>
                         </div>
                     </div>
                 </div>
