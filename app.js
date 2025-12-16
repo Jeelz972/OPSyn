@@ -26,13 +26,13 @@ const ZONE_MAPPING = {
 };
 
 const ZONES_DISPLAY = [
-    { key: '0G', name: '0° G', id:'gauche_0' },
-    { key: '45G', name: '45° G', id:'gauche_45' },
-    { key: '70G', name: '70° G', id:'gauche_70' },
-    { key: 'Axe', name: 'Axe', id:'axe' },
-    { key: '70D', name: '70° D', id:'droit_70' },
-    { key: '45D', name: '45° D', id:'droit_45' },
-    { key: '0D', name: '0° D', id:'droit_0' }
+    { key: '0G', name: '0° Corner G', id:'gauche_0' },
+    { key: '45G', name: '45° Aile G', id:'gauche_45' },
+    { key: '70G', name: '70° Elbow G', id:'gauche_70' },
+    { key: 'Axe', name: 'Axe Top', id:'axe' },
+    { key: '70D', name: '70° Elbow D', id:'droit_70' },
+    { key: '45D', name: '45° Aile D', id:'droit_45' },
+    { key: '0D', name: '0° Corner D', id:'droit_0' }
 ];
 
 const INITIAL_PLAYERS = [
@@ -42,94 +42,123 @@ const INITIAL_PLAYERS = [
     { id: 10, name: 'Thierno' }, { id: 11, name: 'Peniel' }, { id: 12, name: 'Nat' }
 ];
 
-// --- COMPOSANT HEATMAP PRO (SVG) ---
+// --- NOUVEAU COMPOSANT HEATMAP REALISTE (SVG) ---
 const HalfCourtHeatmap = ({ stats }) => {
     
-    // Fonction couleur (Gradient Bleu -> Jaune -> Rouge)
     const getColor = (pct) => {
-        if (pct === null || isNaN(pct)) return "#f3f4f6"; // Gris clair (Vide)
-        if (pct >= 60) return "#dc2626"; // Rouge Vif (Elite)
-        if (pct >= 50) return "#ea580c"; // Orange (Très bon)
-        if (pct >= 40) return "#facc15"; // Jaune (Moyen)
-        if (pct >= 30) return "#60a5fa"; // Bleu clair (Faible)
-        return "#1e3a8a"; // Bleu fonce (Mauvais)
+        if (pct === null || isNaN(pct)) return "transparent"; 
+        if (pct >= 60) return "#dc2626"; // Rouge
+        if (pct >= 50) return "#ea580c"; // Orange
+        if (pct >= 40) return "#facc15"; // Jaune
+        if (pct >= 30) return "#60a5fa"; // Bleu clair
+        return "#1e3a8a"; // Bleu foncé
     };
 
-    // Chemins SVG précis pour les zones (Vue du dessus, Panier en haut)
-    // Canvas 500x400. Panier à (250, 50).
-    const paths = {
-        '0G': "M20,50 L90,50 L90,180 L20,180 Z", // Corner Gauche
-        '0D': "M410,50 L480,50 L480,180 L410,180 Z", // Corner Droit
-        '45G': "M90,50 L180,50 L160,250 L20,180 Z", // Aile Gauche
-        '45D': "M320,50 L410,50 L480,180 L340,250 Z", // Aile Droite
-        '70G': "M180,50 L220,50 L230,280 L160,250 Z", // Elbow Gauche
-        '70D': "M280,50 L320,50 L340,250 L270,280 Z", // Elbow Droit
-        'Axe': "M220,50 L280,50 L270,280 L230,280 Z", // Top Axe
+    // Dimensions virtuelles du SVG : 500x470. Panier centré à (250, 60)
+    const basket = { x: 250, y: 60 };
+    
+    // Définition des chemins pour les zones de tir (Grid System)
+    const zonePaths = {
+        // Corners (Distance fixe)
+        '0G': "M30,60 L90,60 L90,210 L30,210 Z",
+        '0D': "M410,60 L470,60 L470,210 L410,210 Z",
+        
+        // Ailes (Wings) - Suivent la courbe
+        '45G': "M90,60 L170,60 C150,150 130,250 100,350 L30,280 C60,200 80,120 90,60 Z",
+        '45D': "M330,60 L410,60 C420,120 440,200 470,280 L400,350 C370,250 350,150 330,60 Z",
+
+        // Elbows/Slots (Intermédiaire)
+        '70G': "M170,60 L210,60 L210,250 C180,280 150,310 130,330 L100,350 C130,250 150,150 170,60 Z",
+        '70D': "M290,60 L330,60 C350,150 370,250 400,350 L370,330 C350,310 320,280 290,250 L290,60 Z",
+
+        // Axe (Top Key)
+        'Axe': "M210,60 L290,60 L290,250 C270,270 230,270 210,250 Z"
     };
 
-    // Position des labels (Texte)
+    // Position des labels
     const labels = {
-        '0G': {x: 55, y: 120}, '0D': {x: 445, y: 120},
-        '45G': {x: 110, y: 180}, '45D': {x: 390, y: 180},
-        '70G': {x: 185, y: 220}, '70D': {x: 315, y: 220},
-        'Axe': {x: 250, y: 240}
+        '0G': {x: 60, y: 135}, '0D': {x: 440, y: 135},
+        '45G': {x: 120, y: 200}, '45D': {x: 380, y: 200},
+        '70G': {x: 180, y: 240}, '70D': {x: 320, y: 240},
+        'Axe': {x: 250, y: 210}
     };
 
     return (
-        <div className="relative w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-            <svg viewBox="0 0 500 400" className="w-full h-full">
-                {/* --- DESSIN DU TERRAIN --- */}
-                {/* Fond Sol */}
-                <rect x="0" y="0" width="500" height="400" fill="white" />
+        <div className="relative w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden" style={{backgroundImage: 'radial-gradient(circle at 50% 20%, #f8fafc, #e2e8f0)'}}>
+            <svg viewBox="0 0 500 470" className="w-full h-full">
                 
-                {/* Zone 3 Points (Arc) */}
-                <path d="M40,50 L40,140 Q250,400 460,140 L460,50" fill="none" stroke="#e5e7eb" strokeWidth="2" strokeDasharray="5,5"/>
-                
-                {/* Raquette (Peinture) */}
-                <rect x="170" y="50" width="160" height="190" fill="none" stroke="#cbd5e1" strokeWidth="2" />
-                <circle cx="250" cy="190" r="60" fill="none" stroke="#cbd5e1" strokeWidth="2" />
-                
-                {/* Panier & Planche */}
-                <line x1="220" y1="40" x2="280" y2="40" stroke="#0f172a" strokeWidth="4" />
-                <circle cx="250" cy="50" r="10" stroke="#ea580c" strokeWidth="3" fill="none" />
-
-                {/* --- ZONES INTERACTIVES --- */}
+                {/* --- ZONES DE CHALEUR (En arrière-plan) --- */}
                 {ZONES_DISPLAY.map(z => {
                     const data = stats[z.key] || {tt:0, tr:0};
                     const pct = data.tt > 0 ? (data.tr/data.tt)*100 : null;
-                    
+                    const hasData = pct !== null;
+
                     return (
                         <g key={z.key} className="group">
-                            {/* Forme de la zone */}
                             <path 
-                                d={paths[z.key]} 
+                                d={zonePaths[z.key]} 
                                 fill={getColor(pct)} 
-                                stroke="white" 
-                                strokeWidth="3"
-                                className="transition-all duration-300 opacity-90 group-hover:opacity-100 group-hover:scale-[1.02] origin-center cursor-pointer"
+                                stroke={hasData ? "white" : "none"}
+                                strokeWidth="2"
+                                className={`transition-all duration-300 origin-center ${hasData ? 'opacity-80 hover:opacity-100 hover:scale-[1.01] cursor-pointer' : 'opacity-0'}`}
                             />
-                            
-                            {/* Label % */}
-                            <text x={labels[z.key].x} y={labels[z.key].y} textAnchor="middle" fill={pct > 50 ? "white" : "#1e293b"} fontSize="14" fontWeight="900" style={{textShadow: "0px 1px 2px rgba(0,0,0,0.1)"}}>
-                                {pct !== null ? `${Math.round(pct)}%` : '-'}
-                            </text>
-                            
-                            {/* Label Fraction (Réussis/Tentés) - Visible au survol */}
-                            <text x={labels[z.key].x} y={labels[z.key].y + 15} textAnchor="middle" fill={pct > 50 ? "white" : "#475569"} fontSize="10" fontWeight="bold">
-                                {data.tr}/{data.tt}
-                            </text>
+                            {hasData && (
+                                <>
+                                <text x={labels[z.key].x} y={labels[z.key].y} textAnchor="middle" fill={pct > 50 ? "white" : "#1e293b"} fontSize="16" fontWeight="900" style={{textShadow: "0px 1px 3px rgba(0,0,0,0.3)", pointerEvents:'none'}}>
+                                    {`${Math.round(pct)}%`}
+                                </text>
+                                <text x={labels[z.key].x} y={labels[z.key].y + 15} textAnchor="middle" fill={pct > 50 ? "white" : "#334155"} fontSize="11" fontWeight="bold" style={{pointerEvents:'none'}}>
+                                    {data.tr}/{data.tt}
+                                </text>
+                                </>
+                            )}
                         </g>
                     );
                 })}
+
+                {/* --- DESSIN DU TERRAIN RÉALISTE (Lignes par-dessus) --- */}
+                <g fill="none" stroke="#64748b" strokeWidth="2">
+                    {/* Baseline & Sidelines */}
+                    <line x1="30" y1="460" x2="470" y2="460" strokeWidth="3" />
+                    <line x1="30" y1="60" x2="30" y2="460" />
+                    <line x1="470" y1="60" x2="470" y2="460" />
+
+                    {/* Ligne à 3 Points (Réaliste : Droite puis Courbe) */}
+                    {/* Côtés droits (approx 2.99m en réalité, ajusté à l'échelle) */}
+                    <line x1="90" y1="60" x2="90" y2="210" /> 
+                    <line x1="410" y1="60" x2="410" y2="210" />
+                    {/* Arc de cercle connectant les droites */}
+                    <path d="M90,210 Q250,380 410,210" />
+
+                    {/* Raquette (Paint) */}
+                    <rect x="170" y="270" width="160" height="190" />
+
+                    {/* Cercle Lancer-Franc (Top Key) */}
+                    {/* Demi-cercle plein (bas) */}
+                    <path d="M170,270 A80,80 0 0,0 330,270" />
+                    {/* Demi-cercle pointillé (haut) */}
+                    <path d="M170,270 A80,80 0 0,1 330,270" strokeDasharray="6,6" />
+
+                    {/* Zone Restrictive (Sous le panier) */}
+                    <path d="M220,120 A30,30 0 0,1 280,120" />
+                </g>
+
+                {/* Panier & Planche (Drawing) */}
+                <line x1="220" y1="50" x2="280" y2="50" stroke="#0f172a" strokeWidth="4" /> {/* Planche */}
+                <circle cx="250" cy="60" r="12" stroke="#ea580c" strokeWidth="3" fill="none" /> {/* Arceau */}
+                {/* Filet (Stylisé) */}
+                <path d="M238,60 L242,85 L250,90 L258,85 L262,60" fill="none" stroke="#cbd5e1" strokeWidth="1" opacity="0.7"/>
                 
-                {/* Légende du bas */}
-                <text x="250" y="380" textAnchor="middle" fontSize="10" fill="#94a3b8">VUE DU DESSUS • ATTAQUE ↓</text>
+                {/* Légende */}
+                <text x="250" y="450" textAnchor="middle" fontSize="10" fill="#94a3b8" fontWeight="bold">VUE DU DESSUS • DEMI-TERRAIN</text>
             </svg>
         </div>
     );
 };
 
-// --- LOGIQUE MIGRATION & RESTE DE L'APP ---
+// --- RESTE DU CODE (Logique, Saisie, Analyse...) ---
+// (Identique à la v6.1 sauf intégration du nouveau composant Heatmap)
+
 const SHOT_TYPES = [
     { id: '2pt_arret', label: '2pts Arrêt', points: 2, icon: '🛑', cat: '2pt', mouv: false },
     { id: '2pt_mouv', label: '2pts Mouv.', points: 2, icon: '🏃', cat: '2pt', mouv: true },
@@ -159,7 +188,6 @@ const migrateData = (oldData) => {
     return Object.values(newDataMap).map(d => ({ ...d, id: Date.now().toString(36) + Math.random().toString(36).substr(2) }));
 };
 
-// --- APP ---
 function App() {
     const [activeModule, setActiveModule] = useState('shooting');
     const [players, setPlayers] = useState(INITIAL_PLAYERS);
@@ -199,7 +227,7 @@ function App() {
     return (
         <div className="min-h-screen pb-12 bg-gray-50 font-sans text-slate-800">
             <div className="bg-white sticky top-0 z-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center shadow-sm">
-                <h1 className="text-xl font-black text-slate-800">🏀 StatElite <span className="text-xs text-gray-400 font-normal">v6.1 ProMap</span></h1>
+                <h1 className="text-xl font-black text-slate-800">🏀 StatElite <span className="text-xs text-gray-400 font-normal">v6.2 RealCourt</span></h1>
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                     <button onClick={()=>setActiveModule('shooting')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shooting'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Saisie</button>
                     <button onClick={()=>setActiveModule('analysis')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='analysis'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Analyse</button>
@@ -217,7 +245,6 @@ function App() {
     );
 }
 
-// --- SHOOTING MODULE ---
 function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     const [mode, setMode] = useState('field');
     const [selectedPlayer, setSelectedPlayer] = useState(players[0]?.id);
@@ -315,7 +342,6 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     );
 }
 
-// --- ANALYSIS MODULE ---
 function AnalysisModule({ players, historyData, setHistoryData }) {
     const [filterPlayer, setFilterPlayer] = useState('all');
     const [startDate, setStartDate] = useState('');
@@ -332,46 +358,29 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
 
     const calculateStats = () => {
         const matrix = {}; 
-        const teamStats = { 
-            '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, total:{tt:0,tr:0},
-            'arret':{tt:0,tr:0}, 'mouvement':{tt:0,tr:0}, // Correction clé "mouvement"
-            zones: {} 
-        };
+        const teamStats = { '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, total:{tt:0,tr:0}, 'arret':{tt:0,tr:0}, 'mouvement':{tt:0,tr:0}, zones: {} };
         ZONES_DISPLAY.forEach(z => teamStats.zones[z.key] = {tt:0, tr:0});
-
-        players.forEach(p => {
-            matrix[p.id] = { '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, zones: {} };
-            ZONES_DISPLAY.forEach(z => matrix[p.id].zones[z.key] = {tt:0,tr:0});
-        });
+        players.forEach(p => { matrix[p.id] = { '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, zones: {} }; ZONES_DISPLAY.forEach(z => matrix[p.id].zones[z.key] = {tt:0,tr:0}); });
 
         let filtered = historyData;
         if(startDate) filtered = filtered.filter(d => d.date >= startDate);
         if(endDate) filtered = filtered.filter(d => d.date <= endDate);
 
         filtered.forEach(session => {
-            const dist = session.zones.Distance;
-            const typ = session.zones.types; // 'arrêt' ou 'mouvement'
-            const pid = session.playerId;
-
+            const dist = session.zones.Distance; const typ = session.zones.types; const pid = session.playerId;
             Object.keys(session.zones).forEach(key => {
                 if(key === 'Distance' || key === 'types') return;
-                const stats = session.zones[key];
-                if(!stats || stats.attempted === 0) return;
-
-                // TEAM GLOBAL
+                const stats = session.zones[key]; if(!stats || stats.attempted === 0) return;
                 teamStats.total.tt += stats.attempted; teamStats.total.tr += stats.made;
                 if(teamStats[dist]) { teamStats[dist].tt += stats.attempted; teamStats[dist].tr += stats.made; }
-                if(teamStats[typ]) { teamStats[typ].tt += stats.attempted; teamStats[typ].tr += stats.made; } // Correction ici
+                if(teamStats[typ]) { teamStats[typ].tt += stats.attempted; teamStats[typ].tr += stats.made; }
                 if(teamStats.zones[key]) { teamStats.zones[key].tt += stats.attempted; teamStats.zones[key].tr += stats.made; }
-
-                // INDIVIDUAL
                 if(matrix[pid]) {
                     if(matrix[pid][dist]) { matrix[pid][dist].tt += stats.attempted; matrix[pid][dist].tr += stats.made; }
                     if(matrix[pid].zones[key]) { matrix[pid].zones[key].tt += stats.attempted; matrix[pid].zones[key].tr += stats.made; }
                 }
             });
         });
-
         const heatmapStats = filterPlayer === 'all' ? teamStats.zones : (matrix[filterPlayer] ? matrix[filterPlayer].zones : {});
         const recentSessions = [...filtered].sort((a,b) => new Date(b.date) - new Date(a.date));
         return { matrix, teamStats, recentSessions, heatmapStats };
@@ -405,19 +414,14 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                {/* HEATMAP (GAUCHE) */}
-                <div className="md:col-span-7 h-[400px]">
+                <div className="md:col-span-7 h-[470px]">
                     <HalfCourtHeatmap stats={heatmapStats} />
                 </div>
-
-                {/* KPI CARDS (DROITE) - Mise en avant demandée */}
                 <div className="md:col-span-5 grid grid-cols-1 gap-3 content-start">
                     <div className="bg-slate-900 p-4 rounded-xl text-white shadow-lg flex justify-between items-center mb-2">
                         <div><div className="text-xs text-slate-400 font-bold uppercase">Total Tirs</div><div className="text-2xl font-black">{teamStats.total.tr}/{teamStats.total.tt}</div></div>
                         <div className="text-3xl font-black text-green-400">{formatPct(teamStats.total.tr, teamStats.total.tt)}</div>
                     </div>
-                    
-                    {/* PAR DISTANCE */}
                     <div className="grid grid-cols-3 gap-2">
                         <div className="bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-500 text-center">
                             <div className="text-[10px] font-bold text-gray-400 uppercase">2 Pts</div>
@@ -435,28 +439,19 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                             <div className="text-xs font-black text-orange-600">{formatPct(teamStats['LF'].tr, teamStats['LF'].tt)}</div>
                         </div>
                     </div>
-
-                    {/* PAR TYPE (ARRÊT / MOUVEMENT) */}
                     <div className="grid grid-cols-2 gap-2 mt-2">
                         <div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 flex justify-between items-center">
-                            <div>
-                                <div className="text-[10px] font-bold text-gray-400 uppercase">Tirs Arrêt 🛑</div>
-                                <div className="font-bold text-gray-800">{teamStats['arret'].tr}/{teamStats['arret'].tt}</div>
-                            </div>
+                            <div><div className="text-[10px] font-bold text-gray-400 uppercase">Tirs Arrêt 🛑</div><div className="font-bold text-gray-800">{teamStats['arret'].tr}/{teamStats['arret'].tt}</div></div>
                             <div className="text-xl font-black text-blue-600">{formatPct(teamStats['arret'].tr, teamStats['arret'].tt)}</div>
                         </div>
                         <div className="bg-red-50 p-3 rounded-lg border-l-4 border-red-500 flex justify-between items-center">
-                            <div>
-                                <div className="text-[10px] font-bold text-gray-400 uppercase">Tirs Mouv 🏃</div>
-                                <div className="font-bold text-gray-800">{teamStats['mouvement'].tr}/{teamStats['mouvement'].tt}</div>
-                            </div>
+                            <div><div className="text-[10px] font-bold text-gray-400 uppercase">Tirs Mouv 🏃</div><div className="font-bold text-gray-800">{teamStats['mouvement'].tr}/{teamStats['mouvement'].tt}</div></div>
                             <div className="text-xl font-black text-red-600">{formatPct(teamStats['mouvement'].tr, teamStats['mouvement'].tt)}</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* TABLEAU RÉCAPITULATIF */}
             <div className="bg-white rounded-xl shadow overflow-hidden">
                 <div className="p-4 bg-gray-50 border-b font-bold text-gray-700 text-sm">📊 Détail par Joueur</div>
                 <div className="overflow-x-auto">
@@ -492,9 +487,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                     </table>
                 </div>
             </div>
-
-            {/* HISTORIQUE SESSIONS */}
-            <div className="bg-white rounded-xl shadow p-4">
+             <div className="bg-white rounded-xl shadow p-4">
                 <h3 className="font-bold text-sm mb-4 text-gray-700">📜 Historique Séances</h3>
                 <div className="max-h-60 overflow-y-auto space-y-2">
                     {recentSessions.map(session => {
