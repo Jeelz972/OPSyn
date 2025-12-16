@@ -19,20 +19,19 @@ const { useState, useEffect } = React;
 
 // --- DONNÉES & CONFIG ---
 const ZONE_MAPPING = {
-    'gauche_0': '0G', 'droit_0': '0D',
-    'gauche_45': '45G', 'droit_45': '45D',
-    'gauche_70': '70G', 'droit_70': '70D',
-    'axe': 'Axe', 'zone_lf': 'Ligne'
+    'gauche_0': '0G', 'droit_0': '0D', 'gauche_45': '45G', 'droit_45': '45D',
+    'gauche_70': '70G', 'droit_70': '70D', 'axe': 'Axe', 'zone_lf': 'Ligne'
 };
 
-const ZONES_DISPLAY = [
-    { key: '0G', name: '0° Corner G', id:'gauche_0' },
-    { key: '45G', name: '45° Aile G', id:'gauche_45' },
-    { key: '70G', name: '70° Elbow G', id:'gauche_70' },
-    { key: 'Axe', name: 'Axe Top', id:'axe' },
-    { key: '70D', name: '70° Elbow D', id:'droit_70' },
-    { key: '45D', name: '45° Aile D', id:'droit_45' },
-    { key: '0D', name: '0° Corner D', id:'droit_0' }
+// Zones utilisées pour la SAISIE
+const ZONES_INPUT = [
+    { key: '0G', name: '0° Corner G', id:'gauche_0', color: 'from-blue-500 to-blue-600' },
+    { key: '45G', name: '45° Aile G', id:'gauche_45', color: 'from-emerald-400 to-emerald-600' },
+    { key: '70G', name: '70° Elbow G', id:'gauche_70', color: 'from-cyan-400 to-cyan-600' },
+    { key: 'Axe', name: 'Axe Top', id:'axe', color: 'from-indigo-500 to-indigo-600' },
+    { key: '70D', name: '70° Elbow D', id:'droit_70', color: 'from-red-500 to-red-600' },
+    { key: '45D', name: '45° Aile D', id:'droit_45', color: 'from-amber-400 to-amber-600' },
+    { key: '0D', name: '0° Corner D', id:'droit_0', color: 'from-pink-500 to-pink-600' }
 ];
 
 const INITIAL_PLAYERS = [
@@ -42,73 +41,74 @@ const INITIAL_PLAYERS = [
     { id: 10, name: 'Thierno' }, { id: 11, name: 'Peniel' }, { id: 12, name: 'Nat' }
 ];
 
-// --- NOUVEAU COMPOSANT HEATMAP REALISTE (SVG) ---
-const HalfCourtHeatmap = ({ stats }) => {
+// --- NOUVEAU COMPOSANT HEATMAP "SYNERGY STYLE" ---
+const HalfCourtHeatmapPro = ({ heatmapData }) => {
     
-    const getColor = (pct) => {
-        if (pct === null || isNaN(pct)) return "transparent"; 
-        if (pct >= 60) return "#dc2626"; // Rouge
-        if (pct >= 50) return "#ea580c"; // Orange
+    // Fonction couleur : Blanc si vide, sinon dégradé Bleu->Rouge
+    const getColor = (stats) => {
+        if (!stats || stats.tt === 0) return "white"; // Règle demandée : blanc si pas de donnée
+        const pct = (stats.tr / stats.tt) * 100;
+        if (pct >= 55) return "#dc2626"; // Rouge (Chaud)
+        if (pct >= 45) return "#f97316"; // Orange
         if (pct >= 40) return "#facc15"; // Jaune
-        if (pct >= 30) return "#60a5fa"; // Bleu clair
-        return "#1e3a8a"; // Bleu foncé
+        if (pct >= 35) return "#34d399"; // Vert clair
+        return "#3b82f6"; // Bleu (Froid)
     };
 
-    // Dimensions virtuelles du SVG : 500x470. Panier centré à (250, 60)
-    const basket = { x: 250, y: 60 };
-    
-    // Définition des chemins pour les zones de tir (Grid System)
-    const zonePaths = {
-        // Corners (Distance fixe)
-        '0G': "M30,60 L90,60 L90,210 L30,210 Z",
-        '0D': "M410,60 L470,60 L470,210 L410,210 Z",
-        
-        // Ailes (Wings) - Suivent la courbe
-        '45G': "M90,60 L170,60 C150,150 130,250 100,350 L30,280 C60,200 80,120 90,60 Z",
-        '45D': "M330,60 L410,60 C420,120 440,200 470,280 L400,350 C370,250 350,150 330,60 Z",
+    // Définition des zones visuelles (SVG Paths)
+    // Canvas 500x470. Panier à (250, 50).
+    const visualZones = {
+        // --- ZONES 2PTS ---
+        // Raquette (Axe 2pt)
+        '2pt_Axe': { path: "M210,50 L290,50 L290,200 C270,210 230,210 210,200 Z", label: {x:250, y:130} },
+        // Mid-Range Gauche Bas (Corner/Aile Bas 2pt)
+        '2pt_G_Bas': { path: "M30,50 L210,50 L210,160 C150,160 90,120 30,50 Z", label: {x:130, y:90} },
+        // Mid-Range Droit Bas
+        '2pt_D_Bas': { path: "M470,50 L290,50 L290,160 C350,160 410,120 470,50 Z", label: {x:370, y:90} },
+        // Mid-Range Gauche Haut (Aile/Elbow Haut 2pt)
+        '2pt_G_Haut': { path: "M210,160 L210,200 C150,220 100,280 80,330 L30,290 C60,220 120,170 210,160 Z", label: {x:140, y:230} },
+        // Mid-Range Droit Haut
+        '2pt_D_Haut': { path: "M290,160 L290,200 C350,220 400,280 420,330 L470,290 C440,220 380,170 290,160 Z", label: {x:360, y:230} },
 
-        // Elbows/Slots (Intermédiaire)
-        '70G': "M170,60 L210,60 L210,250 C180,280 150,310 130,330 L100,350 C130,250 150,150 170,60 Z",
-        '70D': "M290,60 L330,60 C350,150 370,250 400,350 L370,330 C350,310 320,280 290,250 L290,60 Z",
-
-        // Axe (Top Key)
-        'Axe': "M210,60 L290,60 L290,250 C270,270 230,270 210,250 Z"
-    };
-
-    // Position des labels
-    const labels = {
-        '0G': {x: 60, y: 135}, '0D': {x: 440, y: 135},
-        '45G': {x: 120, y: 200}, '45D': {x: 380, y: 200},
-        '70G': {x: 180, y: 240}, '70D': {x: 320, y: 240},
-        'Axe': {x: 250, y: 210}
+        // --- ZONES 3PTS ---
+        // Corners
+        '3pt_0G': { path: "M30,50 L80,50 L80,220 L30,290 Z", label: {x:55, y:150} },
+        '3pt_0D': { path: "M470,50 L420,50 L420,220 L470,290 Z", label: {x:445, y:150} },
+        // Ailes (Wings)
+        '3pt_45G': { path: "M80,50 L170,50 C150,150 130,250 100,350 L80,220 Z", label: {x:120, y:150} },
+        '3pt_45D': { path: "M420,50 L330,50 C350,150 370,250 400,350 L420,220 Z", label: {x:380, y:150} },
+        // Top (Axe + Elbows 3pt)
+        '3pt_Top': { path: "M170,50 L330,50 C370,250 400,350 250,450 C100,350 130,250 170,50 Z", label: {x:250, y:280} }
     };
 
     return (
         <div className="relative w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden" style={{backgroundImage: 'radial-gradient(circle at 50% 20%, #f8fafc, #e2e8f0)'}}>
             <svg viewBox="0 0 500 470" className="w-full h-full">
                 
-                {/* --- ZONES DE CHALEUR (En arrière-plan) --- */}
-                {ZONES_DISPLAY.map(z => {
-                    const data = stats[z.key] || {tt:0, tr:0};
-                    const pct = data.tt > 0 ? (data.tr/data.tt)*100 : null;
+                {/* --- ZONES DE CHALEUR --- */}
+                {Object.keys(visualZones).map(zoneId => {
+                    const stats = heatmapData[zoneId] || {tt:0, tr:0};
+                    const pct = stats.tt > 0 ? (stats.tr/stats.tt)*100 : null;
                     const hasData = pct !== null;
+                    const color = getColor(stats);
+                    const isWhite = color === 'white';
 
                     return (
-                        <g key={z.key} className="group">
+                        <g key={zoneId} className="group">
                             <path 
-                                d={zonePaths[z.key]} 
-                                fill={getColor(pct)} 
-                                stroke={hasData ? "white" : "none"}
-                                strokeWidth="2"
-                                className={`transition-all duration-300 origin-center ${hasData ? 'opacity-80 hover:opacity-100 hover:scale-[1.01] cursor-pointer' : 'opacity-0'}`}
+                                d={visualZones[zoneId].path} 
+                                fill={color}
+                                stroke={isWhite ? "#e5e7eb" : "white"} // Bordure grise si blanc, sinon blanche
+                                strokeWidth={isWhite ? "1" : "2"}
+                                className={`transition-all duration-300 origin-center ${hasData ? 'opacity-90 hover:opacity-100 hover:scale-[1.01] cursor-pointer' : 'opacity-100'}`}
                             />
                             {hasData && (
                                 <>
-                                <text x={labels[z.key].x} y={labels[z.key].y} textAnchor="middle" fill={pct > 50 ? "white" : "#1e293b"} fontSize="16" fontWeight="900" style={{textShadow: "0px 1px 3px rgba(0,0,0,0.3)", pointerEvents:'none'}}>
+                                <text x={visualZones[zoneId].label.x} y={visualZones[zoneId].label.y} textAnchor="middle" fill={isWhite ? "#1e293b" : "white"} fontSize="14" fontWeight="900" style={{textShadow: isWhite ? "none" : "0px 1px 3px rgba(0,0,0,0.3)", pointerEvents:'none'}}>
                                     {`${Math.round(pct)}%`}
                                 </text>
-                                <text x={labels[z.key].x} y={labels[z.key].y + 15} textAnchor="middle" fill={pct > 50 ? "white" : "#334155"} fontSize="11" fontWeight="bold" style={{pointerEvents:'none'}}>
-                                    {data.tr}/{data.tt}
+                                <text x={visualZones[zoneId].label.x} y={visualZones[zoneId].label.y + 15} textAnchor="middle" fill={isWhite ? "#475569" : "#e2e8f0"} fontSize="11" fontWeight="bold" style={{pointerEvents:'none'}}>
+                                    {stats.tr}/{stats.tt}
                                 </text>
                                 </>
                             )}
@@ -116,49 +116,25 @@ const HalfCourtHeatmap = ({ stats }) => {
                     );
                 })}
 
-                {/* --- DESSIN DU TERRAIN RÉALISTE (Lignes par-dessus) --- */}
-                <g fill="none" stroke="#64748b" strokeWidth="2">
-                    {/* Baseline & Sidelines */}
-                    <line x1="30" y1="460" x2="470" y2="460" strokeWidth="3" />
-                    <line x1="30" y1="60" x2="30" y2="460" />
-                    <line x1="470" y1="60" x2="470" y2="460" />
-
-                    {/* Ligne à 3 Points (Réaliste : Droite puis Courbe) */}
-                    {/* Côtés droits (approx 2.99m en réalité, ajusté à l'échelle) */}
-                    <line x1="90" y1="60" x2="90" y2="210" /> 
-                    <line x1="410" y1="60" x2="410" y2="210" />
-                    {/* Arc de cercle connectant les droites */}
-                    <path d="M90,210 Q250,380 410,210" />
-
-                    {/* Raquette (Paint) */}
-                    <rect x="170" y="270" width="160" height="190" />
-
-                    {/* Cercle Lancer-Franc (Top Key) */}
-                    {/* Demi-cercle plein (bas) */}
-                    <path d="M170,270 A80,80 0 0,0 330,270" />
-                    {/* Demi-cercle pointillé (haut) */}
-                    <path d="M170,270 A80,80 0 0,1 330,270" strokeDasharray="6,6" />
-
-                    {/* Zone Restrictive (Sous le panier) */}
-                    <path d="M220,120 A30,30 0 0,1 280,120" />
+                {/* --- DESSIN DU TERRAIN (Lignes par-dessus) --- */}
+                <g fill="none" stroke="#64748b" strokeWidth="2" pointerEvents="none">
+                    {/* Ligne à 3 Points */}
+                    <line x1="80" y1="50" x2="80" y2="220" /> 
+                    <line x1="420" y1="50" x2="420" y2="220" />
+                    <path d="M80,220 Q250,380 420,220" />
+                    {/* Raquette */}
+                    <rect x="170" y="50" width="160" height="190" />
+                    <path d="M170,240 A80,80 0 0,0 330,240" />
+                    {/* Panier */}
+                    <line x1="220" y1="40" x2="280" y2="40" stroke="#0f172a" strokeWidth="4" />
+                    <circle cx="250" cy="50" r="12" stroke="#ea580c" strokeWidth="3" />
                 </g>
-
-                {/* Panier & Planche (Drawing) */}
-                <line x1="220" y1="50" x2="280" y2="50" stroke="#0f172a" strokeWidth="4" /> {/* Planche */}
-                <circle cx="250" cy="60" r="12" stroke="#ea580c" strokeWidth="3" fill="none" /> {/* Arceau */}
-                {/* Filet (Stylisé) */}
-                <path d="M238,60 L242,85 L250,90 L258,85 L262,60" fill="none" stroke="#cbd5e1" strokeWidth="1" opacity="0.7"/>
-                
-                {/* Légende */}
-                <text x="250" y="450" textAnchor="middle" fontSize="10" fill="#94a3b8" fontWeight="bold">VUE DU DESSUS • DEMI-TERRAIN</text>
             </svg>
         </div>
     );
 };
 
-// --- RESTE DU CODE (Logique, Saisie, Analyse...) ---
-// (Identique à la v6.1 sauf intégration du nouveau composant Heatmap)
-
+// --- LOGIQUE MIGRATION & RESTE DE L'APP ---
 const SHOT_TYPES = [
     { id: '2pt_arret', label: '2pts Arrêt', points: 2, icon: '🛑', cat: '2pt', mouv: false },
     { id: '2pt_mouv', label: '2pts Mouv.', points: 2, icon: '🏃', cat: '2pt', mouv: true },
@@ -167,27 +143,10 @@ const SHOT_TYPES = [
     { id: '1pt_lancer', label: 'Lancer Franc', points: 1, icon: '🏀', cat: 'lf', mouv: false }
 ];
 
-const migrateData = (oldData) => {
-    if (!oldData || oldData.length === 0) return [];
-    if (oldData[0].zones && oldData[0].zones.Distance) return oldData;
-    const newDataMap = {};
-    oldData.forEach(item => {
-        let dist = "2pt", typ = "arrêt";
-        if (item.type) {
-            if (item.type.includes('3pt')) dist = "3pt";
-            else if (item.type.includes('1pt') || item.type.includes('lancer')) dist = "LF";
-            if (item.type.includes('mouv')) typ = "mouvement";
-        }
-        const key = `${item.date}-${item.playerId}-${dist}-${typ}`;
-        if (!newDataMap[key]) { newDataMap[key] = { id: key, playerId: item.playerId, date: item.date, zones: { Distance: dist, types: typ } }; }
-        const zoneKey = ZONE_MAPPING[item.zoneId] || 'Axe';
-        if (!newDataMap[key].zones[zoneKey]) newDataMap[key].zones[zoneKey] = { made: 0, attempted: 0 };
-        newDataMap[key].zones[zoneKey].made += (item.marques || 0);
-        newDataMap[key].zones[zoneKey].attempted += (item.tentes || 0);
-    });
-    return Object.values(newDataMap).map(d => ({ ...d, id: Date.now().toString(36) + Math.random().toString(36).substr(2) }));
-};
+// (Fonction migrateData inchangée...)
+const migrateData = (oldData) => { if (!oldData || oldData.length === 0) return []; if (oldData[0].zones && oldData[0].zones.Distance) return oldData; const newDataMap = {}; oldData.forEach(item => { let dist = "2pt", typ = "arrêt"; if (item.type) { if (item.type.includes('3pt')) dist = "3pt"; else if (item.type.includes('1pt') || item.type.includes('lancer')) dist = "LF"; if (item.type.includes('mouv')) typ = "mouvement"; } const key = `${item.date}-${item.playerId}-${dist}-${typ}`; if (!newDataMap[key]) { newDataMap[key] = { id: key, playerId: item.playerId, date: item.date, zones: { Distance: dist, types: typ } }; } const zoneKey = ZONE_MAPPING[item.zoneId] || 'Axe'; if (!newDataMap[key].zones[zoneKey]) newDataMap[key].zones[zoneKey] = { made: 0, attempted: 0 }; newDataMap[key].zones[zoneKey].made += (item.marques || 0); newDataMap[key].zones[zoneKey].attempted += (item.tentes || 0); }); return Object.values(newDataMap).map(d => ({ ...d, id: Date.now().toString(36) + Math.random().toString(36).substr(2) })); };
 
+// --- MAIN COMPONENT ---
 function App() {
     const [activeModule, setActiveModule] = useState('shooting');
     const [players, setPlayers] = useState(INITIAL_PLAYERS);
@@ -227,7 +186,7 @@ function App() {
     return (
         <div className="min-h-screen pb-12 bg-gray-50 font-sans text-slate-800">
             <div className="bg-white sticky top-0 z-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center shadow-sm">
-                <h1 className="text-xl font-black text-slate-800">🏀 StatElite <span className="text-xs text-gray-400 font-normal">v6.2 RealCourt</span></h1>
+                <h1 className="text-xl font-black text-slate-800">🏀 StatElite <span className="text-xs text-gray-400 font-normal">v7.0 ProMap</span></h1>
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                     <button onClick={()=>setActiveModule('shooting')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shooting'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Saisie</button>
                     <button onClick={()=>setActiveModule('analysis')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='analysis'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Analyse</button>
@@ -245,6 +204,7 @@ function App() {
     );
 }
 
+// --- SHOOTING MODULE (Inchangé) ---
 function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     const [mode, setMode] = useState('field');
     const [selectedPlayer, setSelectedPlayer] = useState(players[0]?.id);
@@ -270,8 +230,7 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
         if (existingIndex >= 0) {
             const session = newData[existingIndex];
             if (!session.zones[selectedZoneKey]) session.zones[selectedZoneKey] = { made: 0, attempted: 0 };
-            session.zones[selectedZoneKey].made += tr;
-            session.zones[selectedZoneKey].attempted += tt;
+            session.zones[selectedZoneKey].made += tr; session.zones[selectedZoneKey].attempted += tt;
             newData[existingIndex] = { ...session };
         } else {
             newData.push({ id: Date.now().toString(36), playerId: parseInt(selectedPlayer), date, zones: { Distance: distance, types: typeTir, [selectedZoneKey]: { made: tr, attempted: tt } } });
@@ -319,7 +278,7 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
                     )}
                     {mode === 'field' && (
                         <div className="grid grid-cols-4 gap-3 mb-8">
-                            {ZONES_DISPLAY.map(z => (
+                            {ZONES_INPUT.map(z => (
                                 <button key={z.key} onClick={()=>setSelectedZoneKey(z.key)} className={`py-4 rounded-xl border-2 transition relative overflow-hidden ${selectedZoneKey===z.key ? `border-transparent bg-gradient-to-br ${z.color} text-white shadow-lg scale-105` : 'border-gray-100 text-gray-500 hover:border-blue-200'}`}>
                                     <span className="relative z-10 font-bold text-sm">{z.name}</span>
                                 </button>
@@ -342,6 +301,7 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     );
 }
 
+// --- ANALYSIS MODULE ---
 function AnalysisModule({ players, historyData, setHistoryData }) {
     const [filterPlayer, setFilterPlayer] = useState('all');
     const [startDate, setStartDate] = useState('');
@@ -356,41 +316,91 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
 
     const deleteSession = (id) => { if(confirm("Supprimer ?")) setHistoryData(historyData.filter(d => d.id !== id)); };
 
-    const calculateStats = () => {
-        const matrix = {}; 
-        const teamStats = { '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, total:{tt:0,tr:0}, 'arret':{tt:0,tr:0}, 'mouvement':{tt:0,tr:0}, zones: {} };
-        ZONES_DISPLAY.forEach(z => teamStats.zones[z.key] = {tt:0, tr:0});
-        players.forEach(p => { matrix[p.id] = { '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, zones: {} }; ZONES_DISPLAY.forEach(z => matrix[p.id].zones[z.key] = {tt:0,tr:0}); });
+    // Fonction utilitaire pour ajouter des stats
+    const addStats = (target, made, attempted) => { target.tt += attempted; target.tr += made; };
 
+    const calculateStats = () => {
+        // Init structures
+        const teamStats = { 
+            '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0}, total:{tt:0,tr:0},
+            'arret':{tt:0,tr:0}, 'mouvement':{tt:0,tr:0}
+        };
+        const matrix = {};
+        players.forEach(p => matrix[p.id] = { 
+            '2pt':{tt:0,tr:0}, '3pt':{tt:0,tr:0}, 'LF':{tt:0,tr:0},
+            'arret':{tt:0,tr:0}, 'mouvement':{tt:0,tr:0}, // Ajout des clés individuelles
+            zones_input: {} 
+        });
+        
+        // Structure spécifique pour la Heatmap Visuelle (Mapping des données d'entrée vers les zones visuelles)
+        const visualHeatmapData = {
+            '2pt_Axe': {tt:0,tr:0}, '2pt_G_Bas': {tt:0,tr:0}, '2pt_D_Bas': {tt:0,tr:0}, '2pt_G_Haut': {tt:0,tr:0}, '2pt_D_Haut': {tt:0,tr:0},
+            '3pt_0G': {tt:0,tr:0}, '3pt_0D': {tt:0,tr:0}, '3pt_45G': {tt:0,tr:0}, '3pt_45D': {tt:0,tr:0}, '3pt_Top': {tt:0,tr:0}
+        };
+
+        // Filtrage date
         let filtered = historyData;
         if(startDate) filtered = filtered.filter(d => d.date >= startDate);
         if(endDate) filtered = filtered.filter(d => d.date <= endDate);
 
+        // Itération des données
         filtered.forEach(session => {
-            const dist = session.zones.Distance; const typ = session.zones.types; const pid = session.playerId;
-            Object.keys(session.zones).forEach(key => {
-                if(key === 'Distance' || key === 'types') return;
-                const stats = session.zones[key]; if(!stats || stats.attempted === 0) return;
-                teamStats.total.tt += stats.attempted; teamStats.total.tr += stats.made;
-                if(teamStats[dist]) { teamStats[dist].tt += stats.attempted; teamStats[dist].tr += stats.made; }
-                if(teamStats[typ]) { teamStats[typ].tt += stats.attempted; teamStats[typ].tr += stats.made; }
-                if(teamStats.zones[key]) { teamStats.zones[key].tt += stats.attempted; teamStats.zones[key].tr += stats.made; }
+            const dist = session.zones.Distance; // '2pt', '3pt', 'LF'
+            const typ = session.zones.types; // 'arrêt', 'mouvement'
+            const pid = session.playerId;
+            const isPlayerSelected = filterPlayer === 'all' || filterPlayer == pid;
+
+            Object.keys(session.zones).forEach(inputKey => {
+                if(inputKey === 'Distance' || inputKey === 'types') return;
+                const stats = session.zones[inputKey];
+                if(!stats || stats.attempted === 0) return;
+
+                // 1. Stats Globales (Equipe)
+                addStats(teamStats.total, stats.made, stats.attempted);
+                if(teamStats[dist]) addStats(teamStats[dist], stats.made, stats.attempted);
+                if(teamStats[typ]) addStats(teamStats[typ], stats.made, stats.attempted);
+
+                // 2. Stats Individuelles (Matrice)
                 if(matrix[pid]) {
-                    if(matrix[pid][dist]) { matrix[pid][dist].tt += stats.attempted; matrix[pid][dist].tr += stats.made; }
-                    if(matrix[pid].zones[key]) { matrix[pid].zones[key].tt += stats.attempted; matrix[pid].zones[key].tr += stats.made; }
+                    if(matrix[pid][dist]) addStats(matrix[pid][dist], stats.made, stats.attempted);
+                    if(matrix[pid][typ]) addStats(matrix[pid][typ], stats.made, stats.attempted);
+                }
+
+                // 3. Remplissage de la Heatmap Visuelle (Si le joueur correspond au filtre)
+                if (isPlayerSelected && dist !== 'LF') {
+                    let visualZoneId = null;
+                    // Logique de mapping : Input Key (ex: 'Axe') + Distance (ex: '2pt') -> Visual Zone ID (ex: '2pt_Axe')
+                    if (dist === '2pt') {
+                        if (inputKey === 'Axe') visualZoneId = '2pt_Axe';
+                        else if (inputKey === '0G') visualZoneId = '2pt_G_Bas';
+                        else if (inputKey === '0D') visualZoneId = '2pt_D_Bas';
+                        else if (['45G', '70G'].includes(inputKey)) visualZoneId = '2pt_G_Haut';
+                        else if (['45D', '70D'].includes(inputKey)) visualZoneId = '2pt_D_Haut';
+                    } else if (dist === '3pt') {
+                        if (inputKey === '0G') visualZoneId = '3pt_0G';
+                        else if (inputKey === '0D') visualZoneId = '3pt_0D';
+                        else if (inputKey === '45G') visualZoneId = '3pt_45G';
+                        else if (inputKey === '45D') visualZoneId = '3pt_45D';
+                        else if (['Axe', '70G', '70D'].includes(inputKey)) visualZoneId = '3pt_Top';
+                    }
+
+                    if (visualZoneId && visualHeatmapData[visualZoneId]) {
+                        addStats(visualHeatmapData[visualZoneId], stats.made, stats.attempted);
+                    }
                 }
             });
         });
-        const heatmapStats = filterPlayer === 'all' ? teamStats.zones : (matrix[filterPlayer] ? matrix[filterPlayer].zones : {});
+
         const recentSessions = [...filtered].sort((a,b) => new Date(b.date) - new Date(a.date));
-        return { matrix, teamStats, recentSessions, heatmapStats };
+        return { matrix, teamStats, recentSessions, visualHeatmapData };
     };
 
-    const { matrix, teamStats, recentSessions, heatmapStats } = calculateStats();
+    const { matrix, teamStats, recentSessions, visualHeatmapData } = calculateStats();
     const formatPct = (tr, tt) => tt > 0 ? Math.round((tr/tt)*100)+'%' : '-';
 
     return (
         <div className="space-y-6">
+            {/* FILTRES */}
             <div className="bg-white p-4 rounded-xl shadow flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex gap-2 items-center">
                     <span className="font-bold text-sm text-gray-500">Joueur :</span>
@@ -414,9 +424,11 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                {/* HEATMAP PRO (GAUCHE) */}
                 <div className="md:col-span-7 h-[470px]">
-                    <HalfCourtHeatmap stats={heatmapStats} />
+                    <HalfCourtHeatmapPro heatmapData={visualHeatmapData} />
                 </div>
+                {/* KPI CARDS (DROITE) */}
                 <div className="md:col-span-5 grid grid-cols-1 gap-3 content-start">
                     <div className="bg-slate-900 p-4 rounded-xl text-white shadow-lg flex justify-between items-center mb-2">
                         <div><div className="text-xs text-slate-400 font-bold uppercase">Total Tirs</div><div className="text-2xl font-black">{teamStats.total.tr}/{teamStats.total.tt}</div></div>
@@ -452,34 +464,45 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
+            {/* TABLEAU RÉCAPITULATIF (Avec Arrêt/Mouvement) */}
             <div className="bg-white rounded-xl shadow overflow-hidden">
                 <div className="p-4 bg-gray-50 border-b font-bold text-gray-700 text-sm">📊 Détail par Joueur</div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-center border-collapse whitespace-nowrap">
                         <thead className="bg-gray-100 text-gray-500 text-xs uppercase">
                             <tr>
-                                <th className="p-3 text-left">Joueur</th>
-                                <th className="p-3">2 Pts</th>
+                                <th className="p-3 text-left bg-gray-200">Joueur</th>
+                                {/* Nouvelles colonnes */}
+                                <th className="p-3 bg-blue-100 text-blue-800">Arrêt 🛑</th>
+                                <th className="p-3 bg-red-100 text-red-800">Mouv 🏃</th>
+                                <th className="p-3 border-l">2 Pts</th>
                                 <th className="p-3">3 Pts</th>
                                 <th className="p-3">LF</th>
-                                {ZONES_DISPLAY.map(z => <th key={z.key} className="p-3">{z.key}</th>)}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
+                            {/* Ligne Total Equipe */}
+                            <tr className="bg-gray-50 font-bold">
+                                <td className="p-3 text-left">TOTAL ÉQUIPE</td>
+                                <td className="p-3 text-blue-600 bg-blue-50">{formatPct(teamStats['arret'].tr, teamStats['arret'].tt)}</td>
+                                <td className="p-3 text-red-600 bg-red-50">{formatPct(teamStats['mouvement'].tr, teamStats['mouvement'].tt)}</td>
+                                <td className="p-3 border-l text-yellow-600">{formatPct(teamStats['2pt'].tr, teamStats['2pt'].tt)}</td>
+                                <td className="p-3 text-purple-600">{formatPct(teamStats['3pt'].tr, teamStats['3pt'].tt)}</td>
+                                <td className="p-3 text-orange-600">{formatPct(teamStats['LF'].tr, teamStats['LF'].tt)}</td>
+                            </tr>
+                            {/* Lignes Joueurs */}
                             {players.map(p => {
                                 if(filterPlayer !== 'all' && p.id != filterPlayer) return null;
                                 const s = matrix[p.id];
                                 return (
                                     <tr key={p.id} className="hover:bg-blue-50/50">
                                         <td className="p-3 text-left font-bold text-gray-800">{p.name}</td>
-                                        <td className="p-3 text-yellow-600 font-bold">{formatPct(s['2pt'].tr, s['2pt'].tt)}</td>
+                                        {/* Nouvelles cellules */}
+                                        <td className="p-3 font-bold text-blue-700 bg-blue-50/30">{formatPct(s['arret'].tr, s['arret'].tt)}</td>
+                                        <td className="p-3 font-bold text-red-700 bg-red-50/30">{formatPct(s['mouvement'].tr, s['mouvement'].tt)}</td>
+                                        <td className="p-3 border-l text-yellow-600 font-bold">{formatPct(s['2pt'].tr, s['2pt'].tt)}</td>
                                         <td className="p-3 text-purple-600 font-bold">{formatPct(s['3pt'].tr, s['3pt'].tt)}</td>
                                         <td className="p-3 text-orange-600 font-bold">{formatPct(s['LF'].tr, s['LF'].tt)}</td>
-                                        {ZONES_DISPLAY.map(z => (
-                                            <td key={z.key} className="p-3 text-gray-500">
-                                                {s.zones[z.key].tt > 0 ? Math.round(s.zones[z.key].tr/s.zones[z.key].tt*100)+'%' : '-'}
-                                            </td>
-                                        ))}
                                     </tr>
                                 );
                             })}
@@ -487,7 +510,9 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                     </table>
                 </div>
             </div>
-             <div className="bg-white rounded-xl shadow p-4">
+
+            {/* HISTORIQUE SESSIONS */}
+            <div className="bg-white rounded-xl shadow p-4">
                 <h3 className="font-bold text-sm mb-4 text-gray-700">📜 Historique Séances</h3>
                 <div className="max-h-60 overflow-y-auto space-y-2">
                     {recentSessions.map(session => {
