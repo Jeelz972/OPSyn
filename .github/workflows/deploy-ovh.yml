@@ -1,0 +1,27 @@
+name: Deploy to OVH 🚀
+
+on:
+  push:
+    branches:
+      - main  # Ou 'master', vérifiez le nom de votre branche principale
+
+jobs:
+  web-deploy:
+    name: 🎉 Deploy
+    runs-on: ubuntu-latest
+    steps:
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v4
+    
+    - name: 📂 Sync files
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        server-dir: /www/  # Dossier cible chez OVH (ne pas oublier le / à la fin)
+        exclude: |
+          **/.git*
+          **/.github*
+          README.md
+          backend/ # On exclut le backend Python car OVH Web ne le gère pas
