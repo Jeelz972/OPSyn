@@ -112,11 +112,73 @@ function zoneToCoordinates(zoneId, type) {
     };
 }
 
-// Convertit les données Firebase (format plat) en tirs avec coordonnées
+// Détecte le format des données (plat ou imbriqué)
+function isNewFormat(record) {
+    return record.hasOwnProperty('zoneId') && record.hasOwnProperty('tentes');
+}
+
+// Convertit l'ancien format (zones imbriquées) vers le nouveau format (plat)
+function convertOldToNewFormat(historyData) {
+    const newData = [];
+    
+    historyData.forEach(session => {
+        // Si c'est déjà le nouveau format, on garde tel quel
+        if (isNewFormat(session)) {
+            newData.push(session);
+            return;
+        }
+        
+        // Ancien format avec zones imbriquées
+        if (!session.zones) return;
+        
+        const distance = session.zones.Distance || session.zones.distance || '3pt';
+        const shotType = session.zones.types || session.zones.type || 'arret';
+        
+        Object.keys(session.zones).forEach(key => {
+            if (['Distance', 'distance', 'types', 'type'].includes(key)) return;
+            
+            const data = session.zones[key];
+            if (!data || typeof data !== 'object') return;
+            
+            const attempted = data.attempted || data.tentes || 0;
+            const made = data.made || data.marques || 0;
+            if (attempted === 0) return;
+            
+            // Mapper les anciennes clés vers les nouveaux zoneId
+            let zoneId = key;
+            const zoneMapping = {
+                '0G': 'gauche_0', '0D': 'droit_0',
+                '45G': 'gauche_45', '45D': 'droit_45',
+                '70G': 'gauche_70', '70D': 'droit_70',
+                'Axe': 'axe', 'axe': 'axe',
+                'Ligne': 'lf', 'LF': 'lf'
+            };
+            zoneId = zoneMapping[key] || key;
+            
+            newData.push({
+                id: session.id + '_' + key,
+                playerId: session.playerId,
+                zoneId: zoneId,
+                date: session.date,
+                type: `${distance}_${shotType}`,
+                tentes: attempted,
+                marques: made
+            });
+        });
+    });
+    
+    console.log(`🔄 Conversion format: ${historyData.length} entrées → ${newData.length} séries`);
+    return newData;
+}
+
+// Convertit les données Firebase en tirs avec coordonnées (gère les 2 formats)
 function convertHistoryToShots(historyData, playerFilter = null) {
     const shots = [];
     
-    historyData.forEach(record => {
+    // D'abord, normaliser les données (convertir ancien format si nécessaire)
+    const normalizedData = convertOldToNewFormat(historyData);
+    
+    normalizedData.forEach(record => {
         // Filtrer par joueur si spécifié
         if (playerFilter && playerFilter !== 'team' && record.playerId.toString() !== playerFilter) {
             return;
