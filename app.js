@@ -44,7 +44,7 @@ const INITIAL_PLAYERS = [
 
 // --- APP ---
 function App() {
-    const [activeModule, setActiveModule] = useState('shooting');
+   const [activeModule, setActiveModule] = useState('shooting');
     const [players, setPlayers] = useState(INITIAL_PLAYERS);
     const [historyData, setHistoryData] = useState([]);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -93,6 +93,7 @@ function App() {
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                     <button onClick={()=>setActiveModule('shooting')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shooting'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Saisie</button>
                     <button onClick={()=>setActiveModule('analysis')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='analysis'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Analyse</button>
+                    <button onClick={()=>setActiveModule('shotchart')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shotchart'?'bg-white shadow text-orange-600':'text-gray-500'}`}>Shot Chart</button>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={()=>handleCloud('save')} disabled={isSyncing} className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold">{isSyncing?'...':'Save'}</button>
@@ -103,6 +104,7 @@ function App() {
             <div className="max-w-7xl mx-auto p-4 md:p-6 animate-fade-in">
                 {activeModule === 'shooting' && <ShootingModule players={players} setPlayers={updatePlayers} historyData={historyData} setHistoryData={updateHistory} />}
                 {activeModule === 'analysis' && <AnalysisModule players={players} historyData={historyData} setHistoryData={updateHistory} />}
+                {activeModule === 'shotchart' && <ShotChartModule players={players} historyData={historyData} />}
             </div>
         </div>
     );
@@ -218,6 +220,469 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
                     )}
                 </div>
             </div>
+        </div>
+    );
+}
+
+// --- CONFIGURATION API ---
+const API_BASE_URL = 'https://opsyn.onrender.com'; // Remplacer par votre URL
+
+// --- MODULE SHOT CHART ---
+function ShotChartModule({ players, historyData }) {
+    const [mode, setMode] = useState('input'); // 'input' ou 'analysis'
+    const [selectedPlayer, setSelectedPlayer] = useState('team');
+    const [shots, setShots] = useState([]);
+    const [heatmapImg, setHeatmapImg] = useState(null);
+    const [shotchartImg, setShotchartImg] = useState(null);
+    const [viewType, setViewType] = useState('heatmap'); // 'heatmap' ou 'shotchart'
+    const [isLoading, setIsLoading] = useState(false);
+    const [distance, setDistance] = useState('2pt');
+    const [shotType, setShotType] = useState('arret');
+    const [stats, setStats] = useState(null);
+    const [resultFilter, setResultFilter] = useState('all');
+    const courtRef = React.useRef(null);
+
+    // Charger les tirs existants au montage
+    useEffect(() => {
+        loadShots();
+    }, [selectedPlayer]);
+
+    const loadShots = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/shots/${selectedPlayer}`);
+            const data = await res.json();
+            setShots(data.shots || []);
+        } catch (e) {
+            console.log('API non disponible, mode local');
+        }
+    };
+
+    // Gestion du clic sur le terrain
+    const handleCourtClick = async (e, result) => {
+        if (!courtRef.current) return;
+        
+        const rect = courtRef.current.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        const newShot = {
+            x: Math.round(x * 10) / 10,
+            y: Math.round(y * 10) / 10,
+            result: result,
+            player_id: selectedPlayer === 'team' ? players[0]?.id.toString() : selectedPlayer,
+            distance: distance,
+            shot_type: shotType,
+            date: new Date().toISOString().split('T')[0]
+        };
+        
+        // Ajouter localement immédiatement
+        setShots(prev => [...prev, newShot]);
+        
+        // Envoyer au backend
+        try {
+            await fetch(`${API_BASE_URL}/api/shot`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newShot)
+            });
+        } catch (e) {
+            console.log('Sauvegarde locale uniquement');
+        }
+    };
+
+    // Charger Heatmap
+    const loadHeatmap = async () => {
+        setIsLoading(true);
+        try {
+            const filter = resultFilter !== 'all' ? `?result_filter=${resultFilter}` : '';
+            const res = await fetch(`${API_BASE_URL}/api/heatmap/${selectedPlayer}${filter}`);
+            if (!res.ok) throw new Error('Pas assez de données');
+            const data = await res.json();
+            setHeatmapImg(data.image);
+            setStats(data.stats);
+        } catch (e) {
+            alert('Erreur: ' + e.message);
+        }
+        setIsLoading(false);
+    };
+
+    // Charger Shot Chart
+    const loadShotChart = async () => {
+        setIsLoading(true);
+        try {
+            const filter = resultFilter !== 'all' ? `?result_filter=${resultFilter}` : '';
+            const res = await fetch(`${API_BASE_URL}/api/shotchart/${selectedPlayer}${filter}`);
+            if (!res.ok) throw new Error('Pas assez de données');
+            const data = await res.json();
+            setShotchartImg(data.image);
+            setStats(data.stats);
+        } catch (e) {
+            alert('Erreur: ' + e.message);
+        }
+        setIsLoading(false);
+    };
+
+    // Effacer les tirs
+    const clearShots = async () => {
+        if (!confirm('Supprimer tous les tirs ?')) return;
+        setShots([]);
+        setHeatmapImg(null);
+        setShotchartImg(null);
+        try {
+            await fetch(`${API_BASE_URL}/api/shots/${selectedPlayer}`, { method: 'DELETE' });
+        } catch (e) {}
+    };
+
+    // Sync depuis historique existant vers l'API
+    const syncFromHistory = async () => {
+        if (!historyData.length) return alert('Aucune donnée à synchroniser');
+        
+        setIsLoading(true);
+        const syntheticShots = [];
+        
+        historyData.forEach(session => {
+            const pid = session.playerId.toString();
+            Object.keys(session.zones).forEach(zoneKey => {
+                if (zoneKey === 'Distance' || zoneKey === 'types') return;
+                
+                const zoneData = session.zones[zoneKey];
+                if (!zoneData || !zoneData.attempted) return;
+                
+                // Coordonnées approximatives par zone
+                const zoneCoords = {
+                    '0G': { x: 5, y: 30 },
+                    '45G': { x: 15, y: 60 },
+                    '70G': { x: 30, y: 75 },
+                    'Axe': { x: 50, y: 85 },
+                    '70D': { x: 70, y: 75 },
+                    '45D': { x: 85, y: 60 },
+                    '0D': { x: 95, y: 30 },
+                    'Ligne': { x: 50, y: 40 },
+                    'LF': { x: 50, y: 40 }
+                };
+                
+                const coords = zoneCoords[zoneKey] || { x: 50, y: 50 };
+                
+                // Créer des tirs synthétiques avec dispersion
+                for (let i = 0; i < zoneData.made; i++) {
+                    syntheticShots.push({
+                        x: coords.x + (Math.random() - 0.5) * 10,
+                        y: coords.y + (Math.random() - 0.5) * 10,
+                        result: 'made',
+                        player_id: pid,
+                        distance: session.zones.Distance || '2pt',
+                        shot_type: session.zones.types || 'arret',
+                        date: session.date
+                    });
+                }
+                
+                const missed = zoneData.attempted - zoneData.made;
+                for (let i = 0; i < missed; i++) {
+                    syntheticShots.push({
+                        x: coords.x + (Math.random() - 0.5) * 10,
+                        y: coords.y + (Math.random() - 0.5) * 10,
+                        result: 'missed',
+                        player_id: pid,
+                        distance: session.zones.Distance || '2pt',
+                        shot_type: session.zones.types || 'arret',
+                        date: session.date
+                    });
+                }
+            });
+        });
+        
+        try {
+            await fetch(`${API_BASE_URL}/api/shots/bulk`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shots: syntheticShots })
+            });
+            alert(`✅ ${syntheticShots.length} tirs synchronisés !`);
+            loadShots();
+        } catch (e) {
+            alert('Erreur sync: ' + e.message);
+        }
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            {/* Header avec toggle */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <button onClick={() => setMode('input')} className={`px-6 py-2 rounded-md font-bold text-sm transition ${mode === 'input' ? 'bg-white text-emerald-600 shadow' : 'text-gray-500'}`}>
+                        🎯 Saisie Terrain
+                    </button>
+                    <button onClick={() => setMode('analysis')} className={`px-6 py-2 rounded-md font-bold text-sm transition ${mode === 'analysis' ? 'bg-white text-purple-600 shadow' : 'text-gray-500'}`}>
+                        📊 Visualisation
+                    </button>
+                </div>
+                
+                {/* Sélecteur Joueur/Équipe */}
+                <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-500">Afficher:</span>
+                    <select 
+                        value={selectedPlayer} 
+                        onChange={(e) => setSelectedPlayer(e.target.value)}
+                        className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 font-bold text-sm outline-none focus:border-blue-500"
+                    >
+                        <option value="team">🏀 Équipe Complète</option>
+                        {players.map(p => (
+                            <option key={p.id} value={p.id.toString()}>{p.name}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            {/* MODE SAISIE */}
+            {mode === 'input' && (
+                <div className="grid lg:grid-cols-12 gap-6">
+                    {/* Panneau Contrôles */}
+                    <div className="lg:col-span-3 space-y-4">
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <h3 className="font-bold text-gray-700 text-sm mb-4">⚙️ Paramètres Tir</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-2">DISTANCE</label>
+                                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                                        <button onClick={() => setDistance('2pt')} className={`flex-1 py-2 rounded text-sm font-bold ${distance === '2pt' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>2 Pts</button>
+                                        <button onClick={() => setDistance('3pt')} className={`flex-1 py-2 rounded text-sm font-bold ${distance === '3pt' ? 'bg-white shadow text-purple-600' : 'text-gray-400'}`}>3 Pts</button>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-2">TYPE</label>
+                                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                                        <button onClick={() => setShotType('arret')} className={`flex-1 py-2 rounded text-sm font-bold ${shotType === 'arret' ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}>🛑 Arrêt</button>
+                                        <button onClick={() => setShotType('mouvement')} className={`flex-1 py-2 rounded text-sm font-bold ${shotType === 'mouvement' ? 'bg-white shadow text-orange-600' : 'text-gray-400'}`}>🏃 Mouv</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Instructions */}
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+                            <h4 className="font-bold text-blue-800 text-sm mb-2">💡 Instructions</h4>
+                            <ul className="text-xs text-blue-700 space-y-1">
+                                <li>• <strong>Clic gauche</strong> = Tir réussi ✅</li>
+                                <li>• <strong>Clic droit</strong> = Tir raté ❌</li>
+                                <li>• Sélectionnez distance et type avant</li>
+                            </ul>
+                        </div>
+                        
+                        {/* Stats rapides */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <h4 className="font-bold text-gray-700 text-sm mb-3">📈 Session</h4>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="bg-gray-50 rounded-lg p-2">
+                                    <div className="text-lg font-black text-gray-800">{shots.length}</div>
+                                    <div className="text-[10px] text-gray-500 uppercase">Total</div>
+                                </div>
+                                <div className="bg-green-50 rounded-lg p-2">
+                                    <div className="text-lg font-black text-green-600">{shots.filter(s => s.result === 'made').length}</div>
+                                    <div className="text-[10px] text-green-600 uppercase">Réussis</div>
+                                </div>
+                                <div className="bg-red-50 rounded-lg p-2">
+                                    <div className="text-lg font-black text-red-500">{shots.filter(s => s.result === 'missed').length}</div>
+                                    <div className="text-[10px] text-red-500 uppercase">Ratés</div>
+                                </div>
+                            </div>
+                            
+                            {shots.length > 0 && (
+                                <button onClick={clearShots} className="w-full mt-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition">
+                                    🗑️ Effacer session
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {/* Terrain Interactif */}
+                    <div className="lg:col-span-9">
+                        <div 
+                            ref={courtRef}
+                            onClick={(e) => handleCourtClick(e, 'made')}
+                            onContextMenu={(e) => { e.preventDefault(); handleCourtClick(e, 'missed'); }}
+                            className="relative bg-gradient-to-b from-orange-800 to-orange-900 rounded-2xl shadow-2xl overflow-hidden cursor-crosshair aspect-[1.06]"
+                            style={{ maxHeight: '600px' }}
+                        >
+                            {/* SVG Terrain */}
+                            <svg viewBox="0 0 500 470" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+                                {/* Fond */}
+                                <rect x="0" y="0" width="500" height="470" fill="#c2410c" />
+                                
+                                {/* Lignes */}
+                                <g stroke="white" strokeWidth="3" fill="none">
+                                    {/* Rectangle extérieur */}
+                                    <rect x="20" y="20" width="460" height="430" />
+                                    
+                                    {/* Raquette */}
+                                    <rect x="170" y="20" width="160" height="190" />
+                                    
+                                    {/* Cercle LF */}
+                                    <circle cx="250" cy="210" r="60" />
+                                    
+                                    {/* Arc 3 points */}
+                                    <path d="M 50 20 L 50 160 Q 50 390 250 390 Q 450 390 450 160 L 450 20" />
+                                    
+                                    {/* Zone restrictive */}
+                                    <rect x="200" y="20" width="100" height="80" strokeDasharray="10,5" />
+                                    
+                                    {/* Panier */}
+                                    <circle cx="250" cy="60" r="15" strokeWidth="4" />
+                                    <rect x="220" y="40" width="60" height="5" fill="white" />
+                                </g>
+                            </svg>
+                            
+                            {/* Points des tirs */}
+                            {shots.map((shot, idx) => (
+                                <div 
+                                    key={idx}
+                                    className={`absolute w-4 h-4 rounded-full transform -translate-x-1/2 -translate-y-1/2 border-2 border-white shadow-lg transition-all ${shot.result === 'made' ? 'bg-green-500' : 'bg-red-500'}`}
+                                    style={{ 
+                                        left: `${shot.x}%`, 
+                                        top: `${shot.y}%`,
+                                        animation: 'fadeIn 0.2s ease-out'
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODE ANALYSE */}
+            {mode === 'analysis' && (
+                <div className="space-y-6">
+                    {/* Contrôles Analyse */}
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap justify-between items-center gap-4">
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => { setViewType('heatmap'); loadHeatmap(); }}
+                                disabled={isLoading}
+                                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition ${viewType === 'heatmap' ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                🔥 Heatmap
+                            </button>
+                            <button 
+                                onClick={() => { setViewType('shotchart'); loadShotChart(); }}
+                                disabled={isLoading}
+                                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition ${viewType === 'shotchart' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                📍 Shot Chart
+                            </button>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-gray-500">Filtrer:</span>
+                            <select 
+                                value={resultFilter} 
+                                onChange={(e) => setResultFilter(e.target.value)}
+                                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                            >
+                                <option value="all">Tous les tirs</option>
+                                <option value="made">✅ Réussis uniquement</option>
+                                <option value="missed">❌ Ratés uniquement</option>
+                            </select>
+                        </div>
+                        
+                        <button 
+                            onClick={syncFromHistory}
+                            disabled={isLoading}
+                            className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-200 transition"
+                        >
+                            🔄 Sync depuis Historique
+                        </button>
+                    </div>
+
+                    {/* Affichage Résultat */}
+                    <div className="grid lg:grid-cols-12 gap-6">
+                        {/* Graphique */}
+                        <div className="lg:col-span-9">
+                            <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden p-4">
+                                {isLoading ? (
+                                    <div className="flex items-center justify-center h-96">
+                                        <div className="text-white text-center">
+                                            <div className="animate-spin w-12 h-12 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
+                                            <p className="font-bold">Génération en cours...</p>
+                                        </div>
+                                    </div>
+                                ) : (heatmapImg || shotchartImg) ? (
+                                    <img 
+                                        src={viewType === 'heatmap' ? heatmapImg : shotchartImg} 
+                                        alt="Shot Chart"
+                                        className="w-full h-auto rounded-lg"
+                                    />
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-96 text-gray-400">
+                                        <span className="text-6xl mb-4">📊</span>
+                                        <p className="font-bold">Cliquez sur un bouton pour générer la visualisation</p>
+                                        <p className="text-sm mt-2">Sélectionnez Équipe ou un joueur spécifique</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* Stats Panel */}
+                        <div className="lg:col-span-3 space-y-4">
+                            {stats && (
+                                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                                    <h3 className="font-bold text-gray-700 text-sm mb-4 pb-2 border-b border-gray-100">
+                                        📊 Statistiques {selectedPlayer === 'team' ? 'Équipe' : players.find(p => p.id.toString() === selectedPlayer)?.name}
+                                    </h3>
+                                    
+                                    <div className="space-y-3">
+                                        <div className="text-center py-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
+                                            <div className="text-4xl font-black text-blue-600">{stats.percentage}%</div>
+                                            <div className="text-xs text-blue-500 font-bold uppercase mt-1">Réussite</div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                            <div className="bg-gray-50 rounded-lg p-3">
+                                                <div className="text-xl font-black text-gray-800">{stats.total}</div>
+                                                <div className="text-[10px] text-gray-500 uppercase">Total</div>
+                                            </div>
+                                            <div className="bg-green-50 rounded-lg p-3">
+                                                <div className="text-xl font-black text-green-600">{stats.made}</div>
+                                                <div className="text-[10px] text-green-600 uppercase">Réussis</div>
+                                            </div>
+                                            <div className="bg-red-50 rounded-lg p-3">
+                                                <div className="text-xl font-black text-red-500">{stats.missed}</div>
+                                                <div className="text-[10px] text-red-500 uppercase">Ratés</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Légende */}
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                                <h4 className="font-bold text-gray-700 text-sm mb-3">🎨 Légende</h4>
+                                {viewType === 'heatmap' ? (
+                                    <div className="space-y-2">
+                                        <div className="h-4 rounded bg-gradient-to-r from-yellow-300 via-orange-500 to-red-600"></div>
+                                        <div className="flex justify-between text-xs text-gray-500">
+                                            <span>Faible densité</span>
+                                            <span>Forte densité</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow"></span>
+                                            <span className="text-sm text-gray-600">Tir réussi</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow"></span>
+                                            <span className="text-sm text-gray-600">Tir raté</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
