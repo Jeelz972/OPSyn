@@ -1,4 +1,14 @@
-// --- CONFIGURATION FIREBASE ---
+// --- MODULE SHOT CHART ---
+function ShotChartModule({ players, historyData }) {
+    const [selectedPlayer, setSelectedPlayer] = useState('team');
+    const [viewType, setViewType] = useState('points');
+    const [isLoading, setIsLoading] = useState(false);
+    const [generatedImage, setGeneratedImage] = useState(null);
+    const [resultFilter, setResultFilter] = useState('all');
+    const [distanceFilter, setDistanceFilter] = useState('all');
+
+    // Convertir en tirs avec coordonnées
+    const allShots = useMemo(() => convertHist// --- CONFIGURATION FIREBASE ---
 const firebaseConfig = {
     apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
     authDomain: "statu18elite.firebaseapp.com",
@@ -71,40 +81,71 @@ function getZoneKey(zoneId) {
 
 // ============================================
 // SYSTÈME DE MAPPING ZONES → COORDONNÉES
+// Positions fixes basées sur un vrai terrain FIBA
 // ============================================
 
-const BASKET_POS = { x: 50, y: 8 };
-
-const DISTANCE_RADIUS = {
-    '2pt': { min: 12, max: 32 },
-    '3pt': { min: 44, max: 58 },
-    'lf': { min: 19, max: 21 }
+// Zones de tir avec positions X,Y en pourcentage du terrain
+// Le panier est en haut au centre (x=50, y~6)
+const ZONE_POSITIONS = {
+    // Corners 3pts (le long de la ligne de fond)
+    'gauche_0': { 
+        '3pt': { xMin: 4, xMax: 12, yMin: 8, yMax: 28 },
+        '2pt': { xMin: 8, xMax: 18, yMin: 10, yMax: 22 }
+    },
+    'droit_0': { 
+        '3pt': { xMin: 88, xMax: 96, yMin: 8, yMax: 28 },
+        '2pt': { xMin: 82, xMax: 92, yMin: 10, yMax: 22 }
+    },
+    // Ailes 45° (sur les côtés, plus bas)
+    'gauche_45': { 
+        '3pt': { xMin: 6, xMax: 22, yMin: 45, yMax: 65 },
+        '2pt': { xMin: 18, xMax: 32, yMin: 30, yMax: 48 }
+    },
+    'droit_45': { 
+        '3pt': { xMin: 78, xMax: 94, yMin: 45, yMax: 65 },
+        '2pt': { xMin: 68, xMax: 82, yMin: 30, yMax: 48 }
+    },
+    // Coudes 70° (elbow étendu)
+    'gauche_70': { 
+        '3pt': { xMin: 18, xMax: 35, yMin: 62, yMax: 78 },
+        '2pt': { xMin: 25, xMax: 40, yMin: 38, yMax: 52 }
+    },
+    'droit_70': { 
+        '3pt': { xMin: 65, xMax: 82, yMin: 62, yMax: 78 },
+        '2pt': { xMin: 60, xMax: 75, yMin: 38, yMax: 52 }
+    },
+    // Axe / Top of the key
+    'axe': { 
+        '3pt': { xMin: 32, xMax: 68, yMin: 72, yMax: 88 },
+        '2pt': { xMin: 38, xMax: 62, yMin: 42, yMax: 58 }
+    },
+    // Ligne de lancers francs
+    'lf': { 
+        'lf': { xMin: 44, xMax: 56, yMin: 38, yMax: 44 }
+    }
 };
 
 function zoneToCoordinates(zoneId, type) {
-    const baseAngle = getZoneAngle(zoneId);
     const { distance } = parseType(type);
-    const distConfig = DISTANCE_RADIUS[distance] || DISTANCE_RADIUS['3pt'];
     
-    // Dispersion
-    const angleSpread = 10;
-    const radiusSpread = 5;
+    // Récupérer la zone de positions
+    const zoneConfig = ZONE_POSITIONS[zoneId];
+    if (!zoneConfig) {
+        // Fallback au centre du terrain
+        return { x: 50 + (Math.random() - 0.5) * 20, y: 50 + (Math.random() - 0.5) * 20 };
+    }
     
-    const angleVariation = (Math.random() - 0.5) * 2 * angleSpread;
-    const angle = baseAngle + angleVariation;
+    // Choisir la config selon la distance
+    const posConfig = zoneConfig[distance] || zoneConfig['3pt'] || Object.values(zoneConfig)[0];
+    if (!posConfig) {
+        return { x: 50 + (Math.random() - 0.5) * 20, y: 50 + (Math.random() - 0.5) * 20 };
+    }
     
-    const baseRadius = distConfig.min + Math.random() * (distConfig.max - distConfig.min);
-    const radiusVariation = (Math.random() - 0.5) * 2 * radiusSpread;
-    const radius = Math.max(10, baseRadius + radiusVariation);
+    // Générer une position aléatoire dans la zone
+    const x = posConfig.xMin + Math.random() * (posConfig.xMax - posConfig.xMin);
+    const y = posConfig.yMin + Math.random() * (posConfig.yMax - posConfig.yMin);
     
-    const angleRad = (angle * Math.PI) / 180;
-    const x = BASKET_POS.x + radius * Math.cos(angleRad);
-    const y = BASKET_POS.y + radius * Math.sin(angleRad);
-    
-    return {
-        x: Math.max(3, Math.min(97, x)),
-        y: Math.max(3, Math.min(95, y))
-    };
+    return { x, y };
 }
 
 // Convertit historyData en tableau de tirs avec coordonnées X/Y
@@ -563,7 +604,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
 // --- MODULE SHOT CHART ---
 function ShotChartModule({ players, historyData }) {
     const [selectedPlayer, setSelectedPlayer] = useState('team');
-    const [viewType, setViewType] = useState('points');
+    const [viewType, setViewType] = useState('points'); // 'points', 'zones', 'heatmap'
     const [isLoading, setIsLoading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState(null);
     const [resultFilter, setResultFilter] = useState('all');
@@ -581,12 +622,79 @@ function ShotChartModule({ players, historyData }) {
         return shots;
     }, [allShots, resultFilter, distanceFilter]);
 
-    // Stats
+    // Stats globales
     const localStats = useMemo(() => {
         const total = filteredShots.length;
         const made = filteredShots.filter(s => s.result === 'made').length;
         return { total, made, missed: total - made, pct: total > 0 ? Math.round((made / total) * 1000) / 10 : 0 };
     }, [filteredShots]);
+
+    // Stats par zone pour la heatmap
+    const zoneStats = useMemo(() => {
+        const stats = {};
+        ZONES_CONFIG.forEach(z => stats[z.id] = { made: 0, total: 0 });
+        
+        // Filtrer par joueur d'abord
+        let data = historyData || [];
+        if (selectedPlayer !== 'team') {
+            data = data.filter(r => r.playerId.toString() === selectedPlayer);
+        }
+        // Filtrer par distance
+        if (distanceFilter !== 'all') {
+            data = data.filter(r => {
+                const { distance } = parseType(r.type);
+                return distance === distanceFilter;
+            });
+        }
+        
+        data.forEach(record => {
+            const zoneId = record.zoneId;
+            if (stats[zoneId]) {
+                stats[zoneId].total += record.tentes || 0;
+                stats[zoneId].made += record.marques || 0;
+            }
+        });
+        
+        // Calculer les pourcentages
+        Object.keys(stats).forEach(z => {
+            const s = stats[z];
+            s.pct = s.total > 0 ? Math.round((s.made / s.total) * 1000) / 10 : null;
+        });
+        
+        return stats;
+    }, [historyData, selectedPlayer, distanceFilter]);
+
+    // Couleur basée sur le pourcentage (bleu froid → rouge chaud)
+    const getPctColor = (pct) => {
+        if (pct === null) return 'rgba(128, 128, 128, 0.3)'; // Gris si pas de données
+        
+        // De bleu (0%) à rouge (70%+)
+        // 0% = bleu froid, 35% = jaune, 50%+ = orange/rouge
+        if (pct < 25) {
+            // Bleu froid
+            const t = pct / 25;
+            return `rgba(59, 130, 246, ${0.4 + t * 0.3})`; // blue-500
+        } else if (pct < 40) {
+            // Bleu vers Jaune
+            const t = (pct - 25) / 15;
+            const r = Math.round(59 + t * (234 - 59));
+            const g = Math.round(130 + t * (179 - 130));
+            const b = Math.round(246 - t * 246);
+            return `rgba(${r}, ${g}, ${b}, 0.7)`;
+        } else if (pct < 55) {
+            // Jaune vers Orange
+            const t = (pct - 40) / 15;
+            const r = Math.round(234 + t * (249 - 234));
+            const g = Math.round(179 - t * (64));
+            return `rgba(${r}, ${g}, 50, 0.75)`;
+        } else {
+            // Orange vers Rouge foncé
+            const t = Math.min((pct - 55) / 20, 1);
+            const r = Math.round(249 - t * 50);
+            const g = Math.round(115 - t * 85);
+            return `rgba(${r}, ${g}, 30, 0.85)`;
+        }
+    };
 
     // Compteur par joueur
     const getPlayerCount = (pid) => {
@@ -606,7 +714,7 @@ function ShotChartModule({ players, historyData }) {
                 body: JSON.stringify({ shots: filteredShots })
             });
             
-            const endpoint = type === 'heatmap' ? 'heatmap' : 'shotchart';
+            const endpoint = 'heatmap';
             const res = await fetch(`${API_BASE_URL}/api/${endpoint}/${selectedPlayer}`);
             
             if (!res.ok) throw new Error('Erreur API');
@@ -614,9 +722,20 @@ function ShotChartModule({ players, historyData }) {
             setGeneratedImage(data.image);
         } catch (e) {
             console.error('API Error:', e);
-            alert('API non disponible');
+            alert('API non disponible - utilisez le mode Zones');
         }
         setIsLoading(false);
+    };
+
+    // Polygones SVG pour chaque zone (basés sur le terrain)
+    const zonePolygons = {
+        'gauche_0': "M 4,4 L 10,4 L 10,32 L 4,32 Z",
+        'droit_0': "M 90,4 L 96,4 L 96,32 L 90,32 Z",
+        'gauche_45': "M 4,32 L 10,32 L 25,70 L 10,70 Z",
+        'droit_45': "M 90,32 L 96,32 L 96,70 L 75,70 Z",
+        'gauche_70': "M 10,70 L 25,70 L 38,88 L 20,88 Z",
+        'droit_70': "M 75,70 L 90,70 L 80,88 L 62,88 Z",
+        'axe': "M 38,88 L 62,88 L 62,96 L 38,96 Z"
     };
 
     return (
@@ -643,9 +762,10 @@ function ShotChartModule({ players, historyData }) {
                     </div>
                     
                     <div className="flex gap-2">
-                        <button onClick={() => setViewType('points')} className={`px-4 py-2 rounded-lg font-bold text-sm ${viewType === 'points' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>📍 Points</button>
-                        <button onClick={() => generateVisualization('heatmap')} disabled={isLoading} className={`px-4 py-2 rounded-lg font-bold text-sm ${viewType === 'heatmap' ? 'bg-orange-500 text-white' : 'bg-gray-100'}`}>
-                            {isLoading && viewType==='heatmap' ? '⏳' : '🔥'} Heatmap
+                        <button onClick={() => setViewType('points')} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${viewType === 'points' ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>📍 Points</button>
+                        <button onClick={() => setViewType('zones')} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${viewType === 'zones' ? 'bg-gradient-to-r from-blue-500 to-red-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>🌡️ Zones %</button>
+                        <button onClick={() => generateVisualization('heatmap')} disabled={isLoading} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${viewType === 'heatmap' ? 'bg-orange-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                            {isLoading ? '⏳' : '🔥'} Heatmap API
                         </button>
                     </div>
                 </div>
@@ -655,6 +775,7 @@ function ShotChartModule({ players, historyData }) {
                 {/* Stats */}
                 <div className="lg:col-span-3 space-y-4">
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-700 text-sm mb-3">📊 Statistiques</h3>
                         <div className="text-center py-3 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl mb-3">
                             <div className="text-3xl font-black text-blue-600">{localStats.pct}%</div>
                             <div className="text-xs text-blue-500 font-bold uppercase">Réussite</div>
@@ -675,62 +796,144 @@ function ShotChartModule({ players, historyData }) {
                         </div>
                     </div>
 
+                    {/* Stats par zone */}
+                    {viewType === 'zones' && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <h4 className="font-bold text-gray-700 text-sm mb-3">📍 Par Zone</h4>
+                            <div className="space-y-2">
+                                {ZONES_CONFIG.map(z => {
+                                    const s = zoneStats[z.id];
+                                    const pct = s?.pct;
+                                    return (
+                                        <div key={z.id} className="flex justify-between items-center p-2 rounded" style={{ backgroundColor: getPctColor(pct) }}>
+                                            <span className="font-bold text-sm text-white drop-shadow">{z.key}</span>
+                                            <span className="font-mono text-sm text-white drop-shadow">
+                                                {pct !== null ? `${pct}%` : '-'} 
+                                                <span className="text-xs opacity-75 ml-1">({s?.made}/{s?.total})</span>
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                         <h4 className="font-bold text-gray-700 text-sm mb-3">📋 Légende</h4>
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-500"></span><span className="text-sm">Réussi</span></div>
-                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-red-500"></span><span className="text-sm">Raté</span></div>
-                        </div>
-                        <div className="mt-3 pt-3 border-t">
-                            <div className="h-3 rounded bg-gradient-to-r from-yellow-300 via-orange-500 to-red-600"></div>
-                            <div className="flex justify-between text-[10px] text-gray-500 mt-1"><span>Faible</span><span>Haute densité</span></div>
-                        </div>
+                        {viewType === 'zones' ? (
+                            <div className="space-y-2">
+                                <div className="h-4 rounded bg-gradient-to-r from-blue-500 via-yellow-400 via-orange-500 to-red-700"></div>
+                                <div className="flex justify-between text-[10px] text-gray-500">
+                                    <span>0%</span>
+                                    <span>25%</span>
+                                    <span>40%</span>
+                                    <span>55%+</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">Bleu = faible %, Rouge = excellent %</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-500"></span><span className="text-sm">Réussi</span></div>
+                                <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-red-500"></span><span className="text-sm">Raté</span></div>
+                            </div>
+                        )}
                     </div>
                 </div>
                 
                 {/* Court */}
                 <div className="lg:col-span-9">
-                    {viewType !== 'points' && generatedImage ? (
+                    {viewType === 'heatmap' && generatedImage ? (
                         <div className="bg-slate-900 rounded-2xl shadow-2xl p-4">
                             <img src={generatedImage} alt="Chart" className="w-full h-auto rounded-lg" />
                         </div>
                     ) : (
-                        <div className="relative bg-gradient-to-b from-orange-700 to-orange-900 rounded-2xl shadow-2xl overflow-hidden" style={{ aspectRatio: '1.06' }}>
-                            <svg viewBox="0 0 100 94" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-                                <rect x="0" y="0" width="100" height="94" fill="#c2410c" />
-                                <g stroke="rgba(255,255,255,0.7)" strokeWidth="0.5" fill="none">
-                                    <rect x="4" y="4" width="92" height="86" />
-                                    <rect x="31" y="4" width="38" height="38" />
-                                    <circle cx="50" cy="42" r="12" />
-                                    <path d="M 10 4 L 10 32 Q 10 78 50 78 Q 90 78 90 32 L 90 4" />
-                                    <circle cx="50" cy="12" r="3" strokeWidth="0.8" />
-                                    <rect x="44" y="8" width="12" height="1" fill="rgba(255,255,255,0.7)" />
+                        <div className="relative bg-gradient-to-b from-orange-700 to-orange-800 rounded-2xl shadow-2xl overflow-hidden" style={{ aspectRatio: '1' }}>
+                            <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+                                {/* Fond du terrain */}
+                                <rect x="0" y="0" width="100" height="100" fill="#c2410c" />
+                                
+                                {/* Zones colorées (mode zones) */}
+                                {viewType === 'zones' && (
+                                    <g>
+                                        {/* Corner gauche */}
+                                        <rect x="4" y="4" width="8" height="28" fill={getPctColor(zoneStats['gauche_0']?.pct)} rx="2"/>
+                                        {/* Corner droit */}
+                                        <rect x="88" y="4" width="8" height="28" fill={getPctColor(zoneStats['droit_0']?.pct)} rx="2"/>
+                                        {/* Aile gauche */}
+                                        <path d="M 4,32 Q 4,70 25,70 L 10,32 Z" fill={getPctColor(zoneStats['gauche_45']?.pct)}/>
+                                        {/* Aile droite */}
+                                        <path d="M 96,32 Q 96,70 75,70 L 90,32 Z" fill={getPctColor(zoneStats['droit_45']?.pct)}/>
+                                        {/* Coude gauche */}
+                                        <path d="M 25,70 Q 35,85 50,88 L 35,70 Z" fill={getPctColor(zoneStats['gauche_70']?.pct)}/>
+                                        {/* Coude droit */}
+                                        <path d="M 75,70 Q 65,85 50,88 L 65,70 Z" fill={getPctColor(zoneStats['droit_70']?.pct)}/>
+                                        {/* Axe */}
+                                        <ellipse cx="50" cy="88" rx="18" ry="8" fill={getPctColor(zoneStats['axe']?.pct)}/>
+                                    </g>
+                                )}
+                                
+                                {/* Lignes du terrain */}
+                                <g stroke="rgba(255,255,255,0.8)" strokeWidth="0.6" fill="none">
+                                    {/* Rectangle extérieur */}
+                                    <rect x="4" y="4" width="92" height="92" />
+                                    
+                                    {/* Raquette */}
+                                    <rect x="31" y="4" width="38" height="22" />
+                                    
+                                    {/* Zone restrictive */}
+                                    <rect x="38" y="4" width="24" height="10" strokeDasharray="2,1" />
+                                    
+                                    {/* Cercle LF */}
+                                    <circle cx="50" cy="26" r="10" />
+                                    
+                                    {/* Arc 3 points - ajusté */}
+                                    <path d="M 4,32 Q 4,85 50,85 Q 96,85 96,32" />
+                                    
+                                    {/* Panier */}
+                                    <circle cx="50" cy="8" r="2.5" strokeWidth="0.8" fill="none"/>
+                                    <rect x="44" y="5" width="12" height="1.5" fill="rgba(255,255,255,0.8)" />
                                 </g>
-                                <g fontSize="3" fill="rgba(255,255,255,0.3)" textAnchor="middle" fontWeight="bold">
+                                
+                                {/* Labels zones */}
+                                <g fontSize="4" fill="rgba(255,255,255,0.5)" textAnchor="middle" fontWeight="bold">
                                     <text x="8" y="20">0°G</text>
-                                    <text x="18" y="50">45°G</text>
-                                    <text x="32" y="68">70°G</text>
-                                    <text x="50" y="78">Axe</text>
-                                    <text x="68" y="68">70°D</text>
-                                    <text x="82" y="50">45°D</text>
                                     <text x="92" y="20">0°D</text>
+                                    <text x="12" y="52">45°G</text>
+                                    <text x="88" y="52">45°D</text>
+                                    <text x="28" y="75">70°G</text>
+                                    <text x="72" y="75">70°D</text>
+                                    <text x="50" y="92">Axe</text>
                                 </g>
+                                
+                                {/* Pourcentages sur les zones */}
+                                {viewType === 'zones' && (
+                                    <g fontSize="5" fill="white" textAnchor="middle" fontWeight="black" style={{textShadow: '1px 1px 2px rgba(0,0,0,0.8)'}}>
+                                        <text x="8" y="16">{zoneStats['gauche_0']?.pct !== null ? zoneStats['gauche_0'].pct + '%' : ''}</text>
+                                        <text x="92" y="16">{zoneStats['droit_0']?.pct !== null ? zoneStats['droit_0'].pct + '%' : ''}</text>
+                                        <text x="14" y="48">{zoneStats['gauche_45']?.pct !== null ? zoneStats['gauche_45'].pct + '%' : ''}</text>
+                                        <text x="86" y="48">{zoneStats['droit_45']?.pct !== null ? zoneStats['droit_45'].pct + '%' : ''}</text>
+                                        <text x="30" y="72">{zoneStats['gauche_70']?.pct !== null ? zoneStats['gauche_70'].pct + '%' : ''}</text>
+                                        <text x="70" y="72">{zoneStats['droit_70']?.pct !== null ? zoneStats['droit_70'].pct + '%' : ''}</text>
+                                        <text x="50" y="86">{zoneStats['axe']?.pct !== null ? zoneStats['axe'].pct + '%' : ''}</text>
+                                    </g>
+                                )}
                             </svg>
                             
-                            {filteredShots.map((shot, i) => (
+                            {/* Points des tirs (mode points) */}
+                            {viewType === 'points' && filteredShots.map((shot, i) => (
                                 <div 
                                     key={i}
-                                    className={`absolute w-2 h-2 rounded-full transform -translate-x-1/2 -translate-y-1/2 ${shot.result === 'made' ? 'bg-green-500' : 'bg-red-500'}`}
-                                    style={{ left: `${shot.x}%`, top: `${shot.y}%`, opacity: 0.8 }}
+                                    className={`absolute w-1.5 h-1.5 rounded-full transform -translate-x-1/2 -translate-y-1/2 ${shot.result === 'made' ? 'bg-green-400' : 'bg-red-400'}`}
+                                    style={{ left: `${shot.x}%`, top: `${shot.y}%`, opacity: 0.85 }}
                                 />
                             ))}
                             
-                            {filteredShots.length === 0 && (
+                            {/* Message si pas de données */}
+                            {viewType === 'points' && filteredShots.length === 0 && (
                                 <div className="absolute inset-0 flex items-center justify-center text-white/60">
                                     <div className="text-center">
                                         <span className="text-5xl block mb-2">📊</span>
                                         <p className="font-bold">Aucune donnée</p>
-                                        <p className="text-sm">Chargez les données Firebase</p>
                                     </div>
                                 </div>
                             )}
@@ -738,7 +941,10 @@ function ShotChartModule({ players, historyData }) {
                     )}
                     
                     <div className="mt-4 bg-indigo-50 rounded-xl p-4 border border-indigo-100">
-                        <p className="text-xs text-indigo-700"><strong>{filteredShots.length} tirs</strong> — Coordonnées générées à partir des zones et distances.</p>
+                        <p className="text-xs text-indigo-700">
+                            <strong>{filteredShots.length} tirs</strong> — 
+                            {viewType === 'zones' ? ' Vue par zones avec pourcentages de réussite.' : ' Positions générées par zone.'}
+                        </p>
                     </div>
                 </div>
             </div>
