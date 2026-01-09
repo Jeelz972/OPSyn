@@ -1,14 +1,4 @@
-// --- MODULE SHOT CHART ---
-function ShotChartModule({ players, historyData }) {
-    const [selectedPlayer, setSelectedPlayer] = useState('team');
-    const [viewType, setViewType] = useState('points');
-    const [isLoading, setIsLoading] = useState(false);
-    const [generatedImage, setGeneratedImage] = useState(null);
-    const [resultFilter, setResultFilter] = useState('all');
-    const [distanceFilter, setDistanceFilter] = useState('all');
-
-    // Convertir en tirs avec coordonnées
-    const allShots = useMemo(() => convertHist// --- CONFIGURATION FIREBASE ---
+// --- CONFIGURATION FIREBASE ---
 const firebaseConfig = {
     apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
     authDomain: "statu18elite.firebaseapp.com",
