@@ -15,7 +15,10 @@ if (typeof firebase !== 'undefined' && !firebase.apps.length) {
     catch (e) { console.error(e); }
 }
 
-const { useState, useEffect } = React;
+// --- CONFIGURATION API SHOT CHART ---
+const API_BASE_URL = 'https://opsyn.onrender.com'; // ← REMPLACER PAR VOTRE URL
+
+const { useState, useEffect, useMemo, useRef } = React;
 
 // --- DONNÉES & CONSTANTES ---
 const ZONES_LIST = [
@@ -24,7 +27,6 @@ const ZONES_LIST = [
     { key: '70D', label: '70° D' }, { key: '45D', label: '45° D' }, { key: '0D', label: '0° D' }
 ];
 
-// Configuration Saisie (Couleurs & IDs)
 const INPUT_ZONES = [
     { key: '0G', name: '0° Corner G', color: 'from-blue-500 to-blue-600' },
     { key: '45G', name: '45° Aile G', color: 'from-emerald-400 to-emerald-600' },
@@ -42,14 +44,109 @@ const INITIAL_PLAYERS = [
     { id: 10, name: 'Thierno' }, { id: 11, name: 'Peniel' }, { id: 12, name: 'Nat' }
 ];
 
+// ============================================
+// SYSTÈME DE MAPPING ZONES → COORDONNÉES
+// ============================================
+
+const BASKET_POS = { x: 50, y: 8 };
+
+const ZONE_ANGLES = {
+    '0D': 0, '45D': 45, '70D': 70, 'Axe': 90,
+    '70G': 110, '45G': 135, '0G': 180,
+    'Ligne': 90, 'LF': 90
+};
+
+const DISTANCE_RADIUS = {
+    '2pt': { min: 8, max: 28 },
+    '3pt': { min: 38, max: 48 },
+    'LF': { min: 18, max: 18 }
+};
+
+const ZONE_SPREAD = {
+    '0G': { angleSpread: 8, radiusSpread: 4 },
+    '0D': { angleSpread: 8, radiusSpread: 4 },
+    '45G': { angleSpread: 12, radiusSpread: 6 },
+    '45D': { angleSpread: 12, radiusSpread: 6 },
+    '70G': { angleSpread: 10, radiusSpread: 5 },
+    '70D': { angleSpread: 10, radiusSpread: 5 },
+    'Axe': { angleSpread: 15, radiusSpread: 5 },
+    'Ligne': { angleSpread: 5, radiusSpread: 2 },
+    'LF': { angleSpread: 5, radiusSpread: 2 }
+};
+
+function zoneToCoordinates(zone, distance) {
+    const baseAngle = ZONE_ANGLES[zone] || 90;
+    const distConfig = DISTANCE_RADIUS[distance] || DISTANCE_RADIUS['2pt'];
+    const spread = ZONE_SPREAD[zone] || { angleSpread: 10, radiusSpread: 5 };
+    
+    const angleVariation = (Math.random() - 0.5) * 2 * spread.angleSpread;
+    const angle = baseAngle + angleVariation;
+    
+    const baseRadius = distConfig.min + Math.random() * (distConfig.max - distConfig.min);
+    const radiusVariation = (Math.random() - 0.5) * 2 * spread.radiusSpread;
+    const radius = Math.max(5, baseRadius + radiusVariation);
+    
+    const angleRad = (angle * Math.PI) / 180;
+    const x = BASKET_POS.x + radius * Math.cos(angleRad);
+    const y = BASKET_POS.y + radius * Math.sin(angleRad);
+    
+    return {
+        x: Math.max(2, Math.min(98, x)),
+        y: Math.max(2, Math.min(98, y))
+    };
+}
+
+function convertHistoryToShots(historyData, playerFilter = null) {
+    const shots = [];
+    
+    historyData.forEach(session => {
+        if (playerFilter && playerFilter !== 'team' && session.playerId.toString() !== playerFilter) return;
+        
+        const distance = session.zones.Distance || '2pt';
+        const shotType = session.zones.types || 'arret';
+        
+        Object.keys(session.zones).forEach(zoneKey => {
+            if (zoneKey === 'Distance' || zoneKey === 'types') return;
+            
+            const zoneData = session.zones[zoneKey];
+            if (!zoneData || typeof zoneData !== 'object' || !zoneData.attempted) return;
+            
+            const normalizedZone = (zoneKey === 'Ligne') ? 'LF' : zoneKey;
+            const effectiveDistance = (normalizedZone === 'LF') ? 'LF' : distance;
+            
+            for (let i = 0; i < zoneData.made; i++) {
+                const coords = zoneToCoordinates(normalizedZone, effectiveDistance);
+                shots.push({
+                    x: coords.x, y: coords.y, result: 'made',
+                    player_id: session.playerId.toString(),
+                    zone: normalizedZone, distance: effectiveDistance,
+                    shot_type: shotType, date: session.date
+                });
+            }
+            
+            const missed = zoneData.attempted - zoneData.made;
+            for (let i = 0; i < missed; i++) {
+                const coords = zoneToCoordinates(normalizedZone, effectiveDistance);
+                shots.push({
+                    x: coords.x, y: coords.y, result: 'missed',
+                    player_id: session.playerId.toString(),
+                    zone: normalizedZone, distance: effectiveDistance,
+                    shot_type: shotType, date: session.date
+                });
+            }
+        });
+    });
+    
+    return shots;
+}
+
 // --- APP ---
 function App() {
-   const [activeModule, setActiveModule] = useState('shooting');
+    const [activeModule, setActiveModule] = useState('shooting');
     const [players, setPlayers] = useState(INITIAL_PLAYERS);
     const [historyData, setHistoryData] = useState([]);
     const [isSyncing, setIsSyncing] = useState(false);
 
-    // Chargement initial
     useEffect(() => {
         const h = localStorage.getItem('basketball_history');
         const p = localStorage.getItem('basketball_players');
@@ -57,11 +154,9 @@ function App() {
         if (p) setPlayers(JSON.parse(p));
     }, []);
 
-    // Sauvegarde locale helpers
     const updateHistory = (newData) => { setHistoryData(newData); localStorage.setItem('basketball_history', JSON.stringify(newData)); };
     const updatePlayers = (newPlayers) => { setPlayers(newPlayers); localStorage.setItem('basketball_players', JSON.stringify(newPlayers)); };
 
-    // Sauvegarde Cloud
     const handleCloud = async (mode) => {
         if (!db) return alert("Firebase non configuré");
         setIsSyncing(true);
@@ -85,15 +180,14 @@ function App() {
 
     return (
         <div className="min-h-screen pb-12 bg-gray-50 text-gray-800 font-sans">
-            {/* Header */}
             <div className="bg-white sticky top-0 z-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center shadow-sm">
                 <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                    🏀 StatElite <span className="text-xs text-white bg-slate-800 px-2 rounded-full font-normal">v8.0 Analysis</span>
+                    🏀 StatElite <span className="text-xs text-white bg-slate-800 px-2 rounded-full font-normal">v8.0</span>
                 </h1>
                 <div className="flex bg-gray-100 p-1 rounded-lg">
-                    <button onClick={()=>setActiveModule('shooting')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shooting'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Saisie</button>
-                    <button onClick={()=>setActiveModule('analysis')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='analysis'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Analyse</button>
-                    <button onClick={()=>setActiveModule('shotchart')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shotchart'?'bg-white shadow text-orange-600':'text-gray-500'}`}>Shot Chart</button>
+                    <button onClick={()=>setActiveModule('shooting')} className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shooting'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Saisie</button>
+                    <button onClick={()=>setActiveModule('analysis')} className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='analysis'?'bg-white shadow text-blue-600':'text-gray-500'}`}>Analyse</button>
+                    <button onClick={()=>setActiveModule('shotchart')} className={`px-3 py-1.5 rounded-md text-sm font-bold transition ${activeModule==='shotchart'?'bg-white shadow text-orange-600':'text-gray-500'}`}>Shot Chart</button>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={()=>handleCloud('save')} disabled={isSyncing} className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold">{isSyncing?'...':'Save'}</button>
@@ -110,7 +204,7 @@ function App() {
     );
 }
 
-// --- MODULE SAISIE (Shooting) ---
+// --- MODULE SAISIE ---
 function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     const [mode, setMode] = useState('field');
     const [selectedPlayer, setSelectedPlayer] = useState(players[0]?.id);
@@ -155,7 +249,6 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
 
     return (
         <div className="grid lg:grid-cols-12 gap-6">
-            {/* Colonne Joueurs */}
             <div className="lg:col-span-3 space-y-4">
                 <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
                     <h3 className="font-bold text-gray-400 text-xs uppercase mb-3">Joueurs</h3>
@@ -171,7 +264,6 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            {/* Colonne Saisie */}
             <div className="lg:col-span-9 space-y-6">
                 <div className="bg-white p-2 rounded-xl shadow border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
                     <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
@@ -224,573 +316,62 @@ function ShootingModule({ players, setPlayers, historyData, setHistoryData }) {
     );
 }
 
-// --- CONFIGURATION API ---
-const API_BASE_URL = 'https://opsyn.onrender.com'; // Remplacer par votre URL
-
-// --- MODULE SHOT CHART ---
-function ShotChartModule({ players, historyData }) {
-    const [mode, setMode] = useState('input'); // 'input' ou 'analysis'
-    const [selectedPlayer, setSelectedPlayer] = useState('team');
-    const [shots, setShots] = useState([]);
-    const [heatmapImg, setHeatmapImg] = useState(null);
-    const [shotchartImg, setShotchartImg] = useState(null);
-    const [viewType, setViewType] = useState('heatmap'); // 'heatmap' ou 'shotchart'
-    const [isLoading, setIsLoading] = useState(false);
-    const [distance, setDistance] = useState('2pt');
-    const [shotType, setShotType] = useState('arret');
-    const [stats, setStats] = useState(null);
-    const [resultFilter, setResultFilter] = useState('all');
-    const courtRef = React.useRef(null);
-
-    // Charger les tirs existants au montage
-    useEffect(() => {
-        loadShots();
-    }, [selectedPlayer]);
-
-    const loadShots = async () => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/shots/${selectedPlayer}`);
-            const data = await res.json();
-            setShots(data.shots || []);
-        } catch (e) {
-            console.log('API non disponible, mode local');
-        }
-    };
-
-    // Gestion du clic sur le terrain
-    const handleCourtClick = async (e, result) => {
-        if (!courtRef.current) return;
-        
-        const rect = courtRef.current.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
-        
-        const newShot = {
-            x: Math.round(x * 10) / 10,
-            y: Math.round(y * 10) / 10,
-            result: result,
-            player_id: selectedPlayer === 'team' ? players[0]?.id.toString() : selectedPlayer,
-            distance: distance,
-            shot_type: shotType,
-            date: new Date().toISOString().split('T')[0]
-        };
-        
-        // Ajouter localement immédiatement
-        setShots(prev => [...prev, newShot]);
-        
-        // Envoyer au backend
-        try {
-            await fetch(`${API_BASE_URL}/api/shot`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newShot)
-            });
-        } catch (e) {
-            console.log('Sauvegarde locale uniquement');
-        }
-    };
-
-    // Charger Heatmap
-    const loadHeatmap = async () => {
-        setIsLoading(true);
-        try {
-            const filter = resultFilter !== 'all' ? `?result_filter=${resultFilter}` : '';
-            const res = await fetch(`${API_BASE_URL}/api/heatmap/${selectedPlayer}${filter}`);
-            if (!res.ok) throw new Error('Pas assez de données');
-            const data = await res.json();
-            setHeatmapImg(data.image);
-            setStats(data.stats);
-        } catch (e) {
-            alert('Erreur: ' + e.message);
-        }
-        setIsLoading(false);
-    };
-
-    // Charger Shot Chart
-    const loadShotChart = async () => {
-        setIsLoading(true);
-        try {
-            const filter = resultFilter !== 'all' ? `?result_filter=${resultFilter}` : '';
-            const res = await fetch(`${API_BASE_URL}/api/shotchart/${selectedPlayer}${filter}`);
-            if (!res.ok) throw new Error('Pas assez de données');
-            const data = await res.json();
-            setShotchartImg(data.image);
-            setStats(data.stats);
-        } catch (e) {
-            alert('Erreur: ' + e.message);
-        }
-        setIsLoading(false);
-    };
-
-    // Effacer les tirs
-    const clearShots = async () => {
-        if (!confirm('Supprimer tous les tirs ?')) return;
-        setShots([]);
-        setHeatmapImg(null);
-        setShotchartImg(null);
-        try {
-            await fetch(`${API_BASE_URL}/api/shots/${selectedPlayer}`, { method: 'DELETE' });
-        } catch (e) {}
-    };
-
-    // Sync depuis historique existant vers l'API
-    const syncFromHistory = async () => {
-        if (!historyData.length) return alert('Aucune donnée à synchroniser');
-        
-        setIsLoading(true);
-        const syntheticShots = [];
-        
-        historyData.forEach(session => {
-            const pid = session.playerId.toString();
-            Object.keys(session.zones).forEach(zoneKey => {
-                if (zoneKey === 'Distance' || zoneKey === 'types') return;
-                
-                const zoneData = session.zones[zoneKey];
-                if (!zoneData || !zoneData.attempted) return;
-                
-                // Coordonnées approximatives par zone
-                const zoneCoords = {
-                    '0G': { x: 5, y: 30 },
-                    '45G': { x: 15, y: 60 },
-                    '70G': { x: 30, y: 75 },
-                    'Axe': { x: 50, y: 85 },
-                    '70D': { x: 70, y: 75 },
-                    '45D': { x: 85, y: 60 },
-                    '0D': { x: 95, y: 30 },
-                    'Ligne': { x: 50, y: 40 },
-                    'LF': { x: 50, y: 40 }
-                };
-                
-                const coords = zoneCoords[zoneKey] || { x: 50, y: 50 };
-                
-                // Créer des tirs synthétiques avec dispersion
-                for (let i = 0; i < zoneData.made; i++) {
-                    syntheticShots.push({
-                        x: coords.x + (Math.random() - 0.5) * 10,
-                        y: coords.y + (Math.random() - 0.5) * 10,
-                        result: 'made',
-                        player_id: pid,
-                        distance: session.zones.Distance || '2pt',
-                        shot_type: session.zones.types || 'arret',
-                        date: session.date
-                    });
-                }
-                
-                const missed = zoneData.attempted - zoneData.made;
-                for (let i = 0; i < missed; i++) {
-                    syntheticShots.push({
-                        x: coords.x + (Math.random() - 0.5) * 10,
-                        y: coords.y + (Math.random() - 0.5) * 10,
-                        result: 'missed',
-                        player_id: pid,
-                        distance: session.zones.Distance || '2pt',
-                        shot_type: session.zones.types || 'arret',
-                        date: session.date
-                    });
-                }
-            });
-        });
-        
-        try {
-            await fetch(`${API_BASE_URL}/api/shots/bulk`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ shots: syntheticShots })
-            });
-            alert(`✅ ${syntheticShots.length} tirs synchronisés !`);
-            loadShots();
-        } catch (e) {
-            alert('Erreur sync: ' + e.message);
-        }
-        setIsLoading(false);
-    };
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-            {/* Header avec toggle */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex bg-gray-100 p-1 rounded-lg">
-                    <button onClick={() => setMode('input')} className={`px-6 py-2 rounded-md font-bold text-sm transition ${mode === 'input' ? 'bg-white text-emerald-600 shadow' : 'text-gray-500'}`}>
-                        🎯 Saisie Terrain
-                    </button>
-                    <button onClick={() => setMode('analysis')} className={`px-6 py-2 rounded-md font-bold text-sm transition ${mode === 'analysis' ? 'bg-white text-purple-600 shadow' : 'text-gray-500'}`}>
-                        📊 Visualisation
-                    </button>
-                </div>
-                
-                {/* Sélecteur Joueur/Équipe */}
-                <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-gray-500">Afficher:</span>
-                    <select 
-                        value={selectedPlayer} 
-                        onChange={(e) => setSelectedPlayer(e.target.value)}
-                        className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 font-bold text-sm outline-none focus:border-blue-500"
-                    >
-                        <option value="team">🏀 Équipe Complète</option>
-                        {players.map(p => (
-                            <option key={p.id} value={p.id.toString()}>{p.name}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {/* MODE SAISIE */}
-            {mode === 'input' && (
-                <div className="grid lg:grid-cols-12 gap-6">
-                    {/* Panneau Contrôles */}
-                    <div className="lg:col-span-3 space-y-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                            <h3 className="font-bold text-gray-700 text-sm mb-4">⚙️ Paramètres Tir</h3>
-                            
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs font-bold text-gray-500 block mb-2">DISTANCE</label>
-                                    <div className="flex bg-gray-100 p-1 rounded-lg">
-                                        <button onClick={() => setDistance('2pt')} className={`flex-1 py-2 rounded text-sm font-bold ${distance === '2pt' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>2 Pts</button>
-                                        <button onClick={() => setDistance('3pt')} className={`flex-1 py-2 rounded text-sm font-bold ${distance === '3pt' ? 'bg-white shadow text-purple-600' : 'text-gray-400'}`}>3 Pts</button>
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <label className="text-xs font-bold text-gray-500 block mb-2">TYPE</label>
-                                    <div className="flex bg-gray-100 p-1 rounded-lg">
-                                        <button onClick={() => setShotType('arret')} className={`flex-1 py-2 rounded text-sm font-bold ${shotType === 'arret' ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}>🛑 Arrêt</button>
-                                        <button onClick={() => setShotType('mouvement')} className={`flex-1 py-2 rounded text-sm font-bold ${shotType === 'mouvement' ? 'bg-white shadow text-orange-600' : 'text-gray-400'}`}>🏃 Mouv</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Instructions */}
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-                            <h4 className="font-bold text-blue-800 text-sm mb-2">💡 Instructions</h4>
-                            <ul className="text-xs text-blue-700 space-y-1">
-                                <li>• <strong>Clic gauche</strong> = Tir réussi ✅</li>
-                                <li>• <strong>Clic droit</strong> = Tir raté ❌</li>
-                                <li>• Sélectionnez distance et type avant</li>
-                            </ul>
-                        </div>
-                        
-                        {/* Stats rapides */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                            <h4 className="font-bold text-gray-700 text-sm mb-3">📈 Session</h4>
-                            <div className="grid grid-cols-3 gap-2 text-center">
-                                <div className="bg-gray-50 rounded-lg p-2">
-                                    <div className="text-lg font-black text-gray-800">{shots.length}</div>
-                                    <div className="text-[10px] text-gray-500 uppercase">Total</div>
-                                </div>
-                                <div className="bg-green-50 rounded-lg p-2">
-                                    <div className="text-lg font-black text-green-600">{shots.filter(s => s.result === 'made').length}</div>
-                                    <div className="text-[10px] text-green-600 uppercase">Réussis</div>
-                                </div>
-                                <div className="bg-red-50 rounded-lg p-2">
-                                    <div className="text-lg font-black text-red-500">{shots.filter(s => s.result === 'missed').length}</div>
-                                    <div className="text-[10px] text-red-500 uppercase">Ratés</div>
-                                </div>
-                            </div>
-                            
-                            {shots.length > 0 && (
-                                <button onClick={clearShots} className="w-full mt-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition">
-                                    🗑️ Effacer session
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    
-                    {/* Terrain Interactif */}
-                    <div className="lg:col-span-9">
-                        <div 
-                            ref={courtRef}
-                            onClick={(e) => handleCourtClick(e, 'made')}
-                            onContextMenu={(e) => { e.preventDefault(); handleCourtClick(e, 'missed'); }}
-                            className="relative bg-gradient-to-b from-orange-800 to-orange-900 rounded-2xl shadow-2xl overflow-hidden cursor-crosshair aspect-[1.06]"
-                            style={{ maxHeight: '600px' }}
-                        >
-                            {/* SVG Terrain */}
-                            <svg viewBox="0 0 500 470" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-                                {/* Fond */}
-                                <rect x="0" y="0" width="500" height="470" fill="#c2410c" />
-                                
-                                {/* Lignes */}
-                                <g stroke="white" strokeWidth="3" fill="none">
-                                    {/* Rectangle extérieur */}
-                                    <rect x="20" y="20" width="460" height="430" />
-                                    
-                                    {/* Raquette */}
-                                    <rect x="170" y="20" width="160" height="190" />
-                                    
-                                    {/* Cercle LF */}
-                                    <circle cx="250" cy="210" r="60" />
-                                    
-                                    {/* Arc 3 points */}
-                                    <path d="M 50 20 L 50 160 Q 50 390 250 390 Q 450 390 450 160 L 450 20" />
-                                    
-                                    {/* Zone restrictive */}
-                                    <rect x="200" y="20" width="100" height="80" strokeDasharray="10,5" />
-                                    
-                                    {/* Panier */}
-                                    <circle cx="250" cy="60" r="15" strokeWidth="4" />
-                                    <rect x="220" y="40" width="60" height="5" fill="white" />
-                                </g>
-                            </svg>
-                            
-                            {/* Points des tirs */}
-                            {shots.map((shot, idx) => (
-                                <div 
-                                    key={idx}
-                                    className={`absolute w-4 h-4 rounded-full transform -translate-x-1/2 -translate-y-1/2 border-2 border-white shadow-lg transition-all ${shot.result === 'made' ? 'bg-green-500' : 'bg-red-500'}`}
-                                    style={{ 
-                                        left: `${shot.x}%`, 
-                                        top: `${shot.y}%`,
-                                        animation: 'fadeIn 0.2s ease-out'
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* MODE ANALYSE */}
-            {mode === 'analysis' && (
-                <div className="space-y-6">
-                    {/* Contrôles Analyse */}
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap justify-between items-center gap-4">
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => { setViewType('heatmap'); loadHeatmap(); }}
-                                disabled={isLoading}
-                                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition ${viewType === 'heatmap' ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                            >
-                                🔥 Heatmap
-                            </button>
-                            <button 
-                                onClick={() => { setViewType('shotchart'); loadShotChart(); }}
-                                disabled={isLoading}
-                                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition ${viewType === 'shotchart' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                            >
-                                📍 Shot Chart
-                            </button>
-                        </div>
-                        
-                        <div className="flex items-center gap-3">
-                            <span className="text-xs font-bold text-gray-500">Filtrer:</span>
-                            <select 
-                                value={resultFilter} 
-                                onChange={(e) => setResultFilter(e.target.value)}
-                                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
-                            >
-                                <option value="all">Tous les tirs</option>
-                                <option value="made">✅ Réussis uniquement</option>
-                                <option value="missed">❌ Ratés uniquement</option>
-                            </select>
-                        </div>
-                        
-                        <button 
-                            onClick={syncFromHistory}
-                            disabled={isLoading}
-                            className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-200 transition"
-                        >
-                            🔄 Sync depuis Historique
-                        </button>
-                    </div>
-
-                    {/* Affichage Résultat */}
-                    <div className="grid lg:grid-cols-12 gap-6">
-                        {/* Graphique */}
-                        <div className="lg:col-span-9">
-                            <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden p-4">
-                                {isLoading ? (
-                                    <div className="flex items-center justify-center h-96">
-                                        <div className="text-white text-center">
-                                            <div className="animate-spin w-12 h-12 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
-                                            <p className="font-bold">Génération en cours...</p>
-                                        </div>
-                                    </div>
-                                ) : (heatmapImg || shotchartImg) ? (
-                                    <img 
-                                        src={viewType === 'heatmap' ? heatmapImg : shotchartImg} 
-                                        alt="Shot Chart"
-                                        className="w-full h-auto rounded-lg"
-                                    />
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-96 text-gray-400">
-                                        <span className="text-6xl mb-4">📊</span>
-                                        <p className="font-bold">Cliquez sur un bouton pour générer la visualisation</p>
-                                        <p className="text-sm mt-2">Sélectionnez Équipe ou un joueur spécifique</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        
-                        {/* Stats Panel */}
-                        <div className="lg:col-span-3 space-y-4">
-                            {stats && (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                                    <h3 className="font-bold text-gray-700 text-sm mb-4 pb-2 border-b border-gray-100">
-                                        📊 Statistiques {selectedPlayer === 'team' ? 'Équipe' : players.find(p => p.id.toString() === selectedPlayer)?.name}
-                                    </h3>
-                                    
-                                    <div className="space-y-3">
-                                        <div className="text-center py-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
-                                            <div className="text-4xl font-black text-blue-600">{stats.percentage}%</div>
-                                            <div className="text-xs text-blue-500 font-bold uppercase mt-1">Réussite</div>
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-3 gap-2 text-center">
-                                            <div className="bg-gray-50 rounded-lg p-3">
-                                                <div className="text-xl font-black text-gray-800">{stats.total}</div>
-                                                <div className="text-[10px] text-gray-500 uppercase">Total</div>
-                                            </div>
-                                            <div className="bg-green-50 rounded-lg p-3">
-                                                <div className="text-xl font-black text-green-600">{stats.made}</div>
-                                                <div className="text-[10px] text-green-600 uppercase">Réussis</div>
-                                            </div>
-                                            <div className="bg-red-50 rounded-lg p-3">
-                                                <div className="text-xl font-black text-red-500">{stats.missed}</div>
-                                                <div className="text-[10px] text-red-500 uppercase">Ratés</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* Légende */}
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                                <h4 className="font-bold text-gray-700 text-sm mb-3">🎨 Légende</h4>
-                                {viewType === 'heatmap' ? (
-                                    <div className="space-y-2">
-                                        <div className="h-4 rounded bg-gradient-to-r from-yellow-300 via-orange-500 to-red-600"></div>
-                                        <div className="flex justify-between text-xs text-gray-500">
-                                            <span>Faible densité</span>
-                                            <span>Forte densité</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow"></span>
-                                            <span className="text-sm text-gray-600">Tir réussi</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow"></span>
-                                            <span className="text-sm text-gray-600">Tir raté</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-// --- MODULE ANALYSE (Nouveau Départ) ---
+// --- MODULE ANALYSE ---
 function AnalysisModule({ players, historyData, setHistoryData }) {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    // --- LOGIQUE CALCULS ---
     const calculateStats = () => {
-        // 1. Initialisation des structures vides
-        const initStat = () => ({ tt: 0, tr: 0 }); // tt = tentés, tr = réussis
-        
-        // Stats Équipe
-        const team = {
-            zones: {}, // Pour chaque zone (0G, 45G...)
-            types: { 'arrêt': initStat(), 'mouvement': initStat() },
-            total: initStat()
-        };
-        // Initialiser zones pour l'équipe
+        const initStat = () => ({ tt: 0, tr: 0 });
+        const team = { zones: {}, types: { 'arrêt': initStat(), 'mouvement': initStat() }, total: initStat() };
         ZONES_LIST.forEach(z => team.zones[z.key] = initStat());
-        team.zones['LF'] = initStat(); // Ajouter LF
+        team.zones['LF'] = initStat();
 
-        // Stats Joueurs (Matrice)
         const playersStats = {};
         players.forEach(p => {
-            playersStats[p.id] = {
-                zones: {},
-                types: { 'arrêt': initStat(), 'mouvement': initStat() },
-                total: initStat()
-            };
+            playersStats[p.id] = { zones: {}, types: { 'arrêt': initStat(), 'mouvement': initStat() }, total: initStat() };
             ZONES_LIST.forEach(z => playersStats[p.id].zones[z.key] = initStat());
             playersStats[p.id].zones['LF'] = initStat();
         });
 
-        // 2. Filtrage Temporel
         let filteredData = historyData;
         if (startDate) filteredData = filteredData.filter(d => d.date >= startDate);
         if (endDate) filteredData = filteredData.filter(d => d.date <= endDate);
 
-        // 3. Agrégation
         filteredData.forEach(session => {
             const pid = session.playerId;
-            const type = session.zones.types; // 'arrêt' ou 'mouvement'
+            const type = session.zones.types;
             
-            // On parcourt les zones enregistrées dans la session
             Object.keys(session.zones).forEach(key => {
-                if (key === 'Distance' || key === 'types') return; // Ignorer métadonnées
-                
-                const data = session.zones[key]; // { made: x, attempted: y }
+                if (key === 'Distance' || key === 'types') return;
+                const data = session.zones[key];
                 if (!data || data.attempted === 0) return;
+                const zoneKey = (key === 'Ligne') ? 'LF' : key;
 
-                const zoneKey = (key === 'Ligne') ? 'LF' : key; // Normaliser LF
+                team.total.tt += data.attempted; team.total.tr += data.made;
+                if (team.types[type]) { team.types[type].tt += data.attempted; team.types[type].tr += data.made; }
+                if (team.zones[zoneKey]) { team.zones[zoneKey].tt += data.attempted; team.zones[zoneKey].tr += data.made; }
 
-                // -- Mise à jour Équipe --
-                team.total.tt += data.attempted;
-                team.total.tr += data.made;
-                
-                if (team.types[type]) {
-                    team.types[type].tt += data.attempted;
-                    team.types[type].tr += data.made;
-                }
-                
-                if (team.zones[zoneKey]) {
-                    team.zones[zoneKey].tt += data.attempted;
-                    team.zones[zoneKey].tr += data.made;
-                }
-
-                // -- Mise à jour Joueur --
                 if (playersStats[pid]) {
                     const pStat = playersStats[pid];
-                    pStat.total.tt += data.attempted;
-                    pStat.total.tr += data.made;
-
-                    if (pStat.types[type]) {
-                        pStat.types[type].tt += data.attempted;
-                        pStat.types[type].tr += data.made;
-                    }
-
-                    if (pStat.zones[zoneKey]) {
-                        pStat.zones[zoneKey].tt += data.attempted;
-                        pStat.zones[zoneKey].tr += data.made;
-                    }
+                    pStat.total.tt += data.attempted; pStat.total.tr += data.made;
+                    if (pStat.types[type]) { pStat.types[type].tt += data.attempted; pStat.types[type].tr += data.made; }
+                    if (pStat.zones[zoneKey]) { pStat.zones[zoneKey].tt += data.attempted; pStat.zones[zoneKey].tr += data.made; }
                 }
             });
         });
 
-        // 4. Calcul des Meilleurs Performeurs par Zone
-        const bestPerformers = {}; // { '0G': { pid: 1, pct: 55 }, ... }
-        
+        const bestPerformers = {};
         const allZoneKeys = [...ZONES_LIST.map(z => z.key), 'LF'];
-        
         allZoneKeys.forEach(zKey => {
-            let bestPid = null;
-            let bestPct = -1;
-
+            let bestPid = null, bestPct = -1;
             players.forEach(p => {
                 const s = playersStats[p.id].zones[zKey];
-                if (s.tt >= 5) { // Minimum 5 tirs pour être éligible (évite les 1/1 = 100%)
+                if (s.tt >= 5) {
                     const pct = (s.tr / s.tt) * 100;
-                    if (pct > bestPct) {
-                        bestPct = pct;
-                        bestPid = p.id;
-                    }
+                    if (pct > bestPct) { bestPct = pct; bestPid = p.id; }
                 }
             });
-
             if (bestPid) bestPerformers[zKey] = { pid: bestPid, pct: bestPct };
         });
 
@@ -798,24 +379,20 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
     };
 
     const { team, playersStats, bestPerformers, recentSessions } = calculateStats();
-
-    // Helper formatage
     const fmt = (stat) => stat.tt > 0 ? Math.round((stat.tr / stat.tt) * 100) + '%' : '-';
     const fmtDet = (stat) => stat.tt > 0 ? `${stat.tr}/${stat.tt}` : '';
 
-    // Gestion Dates Rapides
     const setQuickRange = (type) => {
         const now = new Date();
         if(type==='all') { setStartDate(''); setEndDate(''); }
-        if(type==='month') { const d = new Date(now.getFullYear(), now.getMonth(), 1); const iso = new Date(d.getTime()-(d.getTimezoneOffset()*60000)).toISOString().split('T')[0]; setStartDate(iso); setEndDate(''); }
-        if(type==='season') { const startYear = now.getMonth()<8 ? now.getFullYear()-1 : now.getFullYear(); const d = new Date(startYear, 8, 1); const iso = new Date(d.getTime()-(d.getTimezoneOffset()*60000)).toISOString().split('T')[0]; setStartDate(iso); setEndDate(''); }
+        if(type==='month') { const d = new Date(now.getFullYear(), now.getMonth(), 1); setStartDate(d.toISOString().split('T')[0]); setEndDate(''); }
+        if(type==='season') { const startYear = now.getMonth()<8 ? now.getFullYear()-1 : now.getFullYear(); const d = new Date(startYear, 8, 1); setStartDate(d.toISOString().split('T')[0]); setEndDate(''); }
     };
 
     const deleteSession = (id) => { if(confirm("Supprimer ?")) setHistoryData(historyData.filter(d => d.id !== id)); };
 
     return (
         <div className="space-y-8 animate-fade-in">
-            {/* BARRE DE FILTRES */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
                     {['all', 'month', 'season'].map(t => (
@@ -830,9 +407,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            {/* 1. TABLEAU GLOBAL ÉQUIPE (PAR ZONES & TYPES) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Global Par Types */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="bg-slate-900 text-white px-4 py-3 font-bold flex justify-between">
                         <span>🌍 Global par Type</span>
@@ -859,7 +434,6 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                     </div>
                 </div>
 
-                {/* Global Par Zones (Grid) */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden p-4">
                     <h3 className="text-xs font-bold text-gray-400 uppercase mb-3">Performance par Zone (Équipe)</h3>
                     <div className="grid grid-cols-7 gap-1 text-center">
@@ -879,7 +453,6 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            {/* 2. TABLEAU DÉTAILLÉ JOUEURS */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                     <h3 className="font-bold text-slate-800">📊 Performance Individuelle & Tops</h3>
@@ -902,12 +475,8 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                                 return (
                                     <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
                                         <td className="p-3 text-left font-bold text-slate-700 bg-white sticky left-0 z-10 shadow-sm border-r border-gray-100">{p.name}</td>
-                                        
-                                        {/* Types */}
                                         <td className="p-3 bg-blue-50/20 font-mono text-blue-700 font-bold">{fmt(s.types['arrêt'])}</td>
                                         <td className="p-3 bg-red-50/20 font-mono text-red-700 font-bold border-r border-gray-200">{fmt(s.types['mouvement'])}</td>
-
-                                        {/* Zones */}
                                         {ZONES_LIST.map(z => {
                                             const stat = s.zones[z.key];
                                             const isBest = bestPerformers[z.key]?.pid === p.id && bestPerformers[z.key]?.pct > 0;
@@ -919,8 +488,6 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                                                 </td>
                                             );
                                         })}
-
-                                        {/* LF */}
                                         <td className={`p-3 border-l border-gray-200 relative ${bestPerformers['LF']?.pid === p.id ? 'bg-orange-100' : 'bg-orange-50/30'}`}>
                                             <div className="font-bold text-orange-700">{fmt(s.zones['LF'])}</div>
                                             {bestPerformers['LF']?.pid === p.id && <span className="absolute top-1 right-1 text-[8px]">👑</span>}
@@ -933,14 +500,12 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                 </div>
             </div>
 
-            {/* HISTORIQUE */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <h3 className="font-bold text-sm mb-4 text-gray-600 uppercase">📜 Historique des séances (Période)</h3>
+                <h3 className="font-bold text-sm mb-4 text-gray-600 uppercase">📜 Historique des séances</h3>
                 <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
                     {recentSessions.length === 0 ? <p className="text-gray-400 italic text-sm">Aucune séance trouvée.</p> : 
                     recentSessions.map(sess => {
                         const pName = players.find(p=>p.id===sess.playerId)?.name || '?';
-                        // Calcul rapide du total de la session pour affichage
                         let totalSessM = 0, totalSessA = 0;
                         Object.keys(sess.zones).forEach(k => {
                             if(k!=='Distance'&&k!=='types'){ totalSessM += sess.zones[k].made; totalSessA += sess.zones[k].attempted; }
@@ -961,6 +526,277 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
                             </div>
                         );
                     })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- MODULE SHOT CHART ---
+function ShotChartModule({ players, historyData }) {
+    const [mode, setMode] = useState('analysis');
+    const [selectedPlayer, setSelectedPlayer] = useState('team');
+    const [localShots, setLocalShots] = useState([]);
+    const [viewType, setViewType] = useState('heatmap');
+    const [isLoading, setIsLoading] = useState(false);
+    const [generatedImage, setGeneratedImage] = useState(null);
+    const [distance, setDistance] = useState('2pt');
+    const [shotType, setShotType] = useState('arret');
+    const [resultFilter, setResultFilter] = useState('all');
+    const [dataSource, setDataSource] = useState('firebase');
+    const courtRef = useRef(null);
+
+    const firebaseShots = useMemo(() => convertHistoryToShots(historyData, selectedPlayer), [historyData, selectedPlayer]);
+
+    const localStats = useMemo(() => {
+        const shots = dataSource === 'firebase' ? firebaseShots : localShots;
+        let filtered = shots;
+        if (resultFilter === 'made') filtered = shots.filter(s => s.result === 'made');
+        else if (resultFilter === 'missed') filtered = shots.filter(s => s.result === 'missed');
+        
+        const total = filtered.length;
+        const made = filtered.filter(s => s.result === 'made').length;
+        return { total, made, missed: total - made, percentage: total > 0 ? Math.round((made / total) * 1000) / 10 : 0 };
+    }, [firebaseShots, localShots, dataSource, resultFilter]);
+
+    const displayShots = useMemo(() => {
+        const shots = dataSource === 'firebase' ? firebaseShots : localShots;
+        if (resultFilter === 'made') return shots.filter(s => s.result === 'made');
+        if (resultFilter === 'missed') return shots.filter(s => s.result === 'missed');
+        return shots;
+    }, [firebaseShots, localShots, dataSource, resultFilter]);
+
+    const handleCourtClick = (e, result) => {
+        if (mode !== 'input' || !courtRef.current) return;
+        const rect = courtRef.current.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        setLocalShots(prev => [...prev, {
+            x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, result,
+            player_id: selectedPlayer === 'team' ? players[0]?.id.toString() : selectedPlayer,
+            distance, shot_type: shotType, date: new Date().toISOString().split('T')[0]
+        }]);
+    };
+
+    const generateVisualization = async (type) => {
+        setIsLoading(true);
+        setViewType(type);
+        
+        const shotsToSend = dataSource === 'firebase' ? firebaseShots : localShots;
+        if (shotsToSend.length < 3) { alert('Il faut au moins 3 tirs'); setIsLoading(false); return; }
+        
+        try {
+            await fetch(`${API_BASE_URL}/api/shots/team`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/api/shots/bulk`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shots: shotsToSend })
+            });
+            
+            const endpoint = type === 'heatmap' ? 'heatmap' : 'shotchart';
+            const filter = resultFilter !== 'all' ? `?result_filter=${resultFilter}` : '';
+            const res = await fetch(`${API_BASE_URL}/api/${endpoint}/${selectedPlayer}${filter}`);
+            
+            if (!res.ok) throw new Error('Erreur génération');
+            const data = await res.json();
+            setGeneratedImage(data.image);
+        } catch (e) {
+            console.error('Erreur API:', e);
+            alert('Erreur API. Vérifiez que le backend est démarré sur ' + API_BASE_URL);
+        }
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        <button onClick={() => setMode('analysis')} className={`px-5 py-2 rounded-md font-bold text-sm transition ${mode === 'analysis' ? 'bg-white text-purple-600 shadow' : 'text-gray-500'}`}>📊 Analyse Firebase</button>
+                        <button onClick={() => setMode('input')} className={`px-5 py-2 rounded-md font-bold text-sm transition ${mode === 'input' ? 'bg-white text-emerald-600 shadow' : 'text-gray-500'}`}>🎯 Saisie Terrain</button>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-gray-500">Joueur:</span>
+                        <select value={selectedPlayer} onChange={(e) => { setSelectedPlayer(e.target.value); setGeneratedImage(null); }} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 font-bold text-sm outline-none">
+                            <option value="team">🏀 Équipe Complète</option>
+                            {players.map(p => <option key={p.id} value={p.id.toString()}>{p.name}</option>)}
+                        </select>
+                    </div>
+                    
+                    {mode === 'analysis' && (
+                        <div className="flex items-center gap-3">
+                            <div className="flex bg-gray-100 p-1 rounded-lg">
+                                <button onClick={() => setDataSource('firebase')} className={`px-3 py-1 rounded text-xs font-bold ${dataSource === 'firebase' ? 'bg-orange-500 text-white' : 'text-gray-500'}`}>🔥 Firebase ({firebaseShots.length})</button>
+                                <button onClick={() => setDataSource('session')} className={`px-3 py-1 rounded text-xs font-bold ${dataSource === 'session' ? 'bg-blue-500 text-white' : 'text-gray-500'}`}>📍 Session ({localShots.length})</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="grid lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-3 space-y-4">
+                    {mode === 'input' && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <h3 className="font-bold text-gray-700 text-sm mb-4">⚙️ Paramètres</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-2">DISTANCE</label>
+                                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                                        <button onClick={() => setDistance('2pt')} className={`flex-1 py-2 rounded text-sm font-bold ${distance === '2pt' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>2 Pts</button>
+                                        <button onClick={() => setDistance('3pt')} className={`flex-1 py-2 rounded text-sm font-bold ${distance === '3pt' ? 'bg-white shadow text-purple-600' : 'text-gray-400'}`}>3 Pts</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-2">TYPE</label>
+                                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                                        <button onClick={() => setShotType('arret')} className={`flex-1 py-2 rounded text-sm font-bold ${shotType === 'arret' ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}>🛑 Arrêt</button>
+                                        <button onClick={() => setShotType('mouvement')} className={`flex-1 py-2 rounded text-sm font-bold ${shotType === 'mouvement' ? 'bg-white shadow text-orange-600' : 'text-gray-400'}`}>🏃 Mouv</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                                <p className="text-xs text-blue-700"><strong>Clic gauche</strong> = Réussi ✅<br/><strong>Clic droit</strong> = Raté ❌</p>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {mode === 'analysis' && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <h3 className="font-bold text-gray-700 text-sm mb-4">🎨 Visualisation</h3>
+                            <div className="space-y-3">
+                                <button onClick={() => generateVisualization('heatmap')} disabled={isLoading} className={`w-full py-3 rounded-lg font-bold text-sm transition ${viewType === 'heatmap' && generatedImage ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                                    {isLoading && viewType === 'heatmap' ? '⏳ Génération...' : '🔥 Générer Heatmap'}
+                                </button>
+                                <button onClick={() => generateVisualization('shotchart')} disabled={isLoading} className={`w-full py-3 rounded-lg font-bold text-sm transition ${viewType === 'shotchart' && generatedImage ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                                    {isLoading && viewType === 'shotchart' ? '⏳ Génération...' : '📍 Générer Shot Chart'}
+                                </button>
+                                <div className="pt-2 border-t border-gray-100">
+                                    <label className="text-xs font-bold text-gray-500 block mb-2">FILTRER</label>
+                                    <select value={resultFilter} onChange={(e) => setResultFilter(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                                        <option value="all">Tous les tirs</option>
+                                        <option value="made">✅ Réussis uniquement</option>
+                                        <option value="missed">❌ Ratés uniquement</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-700 text-sm mb-3">📈 {selectedPlayer === 'team' ? 'Équipe' : players.find(p => p.id.toString() === selectedPlayer)?.name}</h3>
+                        <div className="text-center py-3 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl mb-3">
+                            <div className="text-3xl font-black text-blue-600">{localStats.percentage}%</div>
+                            <div className="text-xs text-blue-500 font-bold uppercase">Réussite</div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-gray-50 rounded-lg p-2">
+                                <div className="text-lg font-black text-gray-800">{localStats.total}</div>
+                                <div className="text-[10px] text-gray-500 uppercase">Total</div>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-2">
+                                <div className="text-lg font-black text-green-600">{localStats.made}</div>
+                                <div className="text-[10px] text-green-600 uppercase">Réussis</div>
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-2">
+                                <div className="text-lg font-black text-red-500">{localStats.missed}</div>
+                                <div className="text-[10px] text-red-500 uppercase">Ratés</div>
+                            </div>
+                        </div>
+                        {mode === 'input' && localShots.length > 0 && (
+                            <button onClick={() => { setLocalShots([]); setGeneratedImage(null); }} className="w-full mt-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition">🗑️ Effacer session</button>
+                        )}
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <h4 className="font-bold text-gray-700 text-sm mb-3">📋 Légende</h4>
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow"></span><span className="text-sm text-gray-600">Tir réussi</span></div>
+                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow"></span><span className="text-sm text-gray-600">Tir raté</span></div>
+                        </div>
+                        {mode === 'analysis' && viewType === 'heatmap' && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                                <div className="h-3 rounded bg-gradient-to-r from-yellow-300 via-orange-500 to-red-600"></div>
+                                <div className="flex justify-between text-[10px] text-gray-500 mt-1"><span>Faible</span><span>Forte densité</span></div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="lg:col-span-9">
+                    {mode === 'analysis' && generatedImage ? (
+                        <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden p-4">
+                            {isLoading ? (
+                                <div className="flex items-center justify-center h-96">
+                                    <div className="text-white text-center">
+                                        <div className="animate-spin w-12 h-12 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
+                                        <p className="font-bold">Génération en cours...</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <img src={generatedImage} alt="Shot Chart" className="w-full h-auto rounded-lg" />
+                            )}
+                        </div>
+                    ) : (
+                        <div 
+                            ref={courtRef}
+                            onClick={(e) => handleCourtClick(e, 'made')}
+                            onContextMenu={(e) => { e.preventDefault(); handleCourtClick(e, 'missed'); }}
+                            className={`relative bg-gradient-to-b from-orange-700 to-orange-900 rounded-2xl shadow-2xl overflow-hidden ${mode === 'input' ? 'cursor-crosshair' : ''}`}
+                            style={{ aspectRatio: '1.06' }}
+                        >
+                            <svg viewBox="0 0 100 94" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+                                <rect x="0" y="0" width="100" height="94" fill="#c2410c" />
+                                <g stroke="rgba(255,255,255,0.8)" strokeWidth="0.5" fill="none">
+                                    <rect x="4" y="4" width="92" height="86" />
+                                    <rect x="31" y="4" width="38" height="38" />
+                                    <rect x="38" y="4" width="24" height="16" strokeDasharray="2,1" />
+                                    <circle cx="50" cy="42" r="12" />
+                                    <path d="M 10 4 L 10 32 Q 10 78 50 78 Q 90 78 90 32 L 90 4" />
+                                    <circle cx="50" cy="12" r="3" strokeWidth="0.8" />
+                                    <rect x="44" y="8" width="12" height="1" fill="rgba(255,255,255,0.8)" />
+                                </g>
+                                {mode === 'analysis' && (
+                                    <g fontSize="3" fill="rgba(255,255,255,0.4)" textAnchor="middle" fontWeight="bold">
+                                        <text x="8" y="25">0°G</text>
+                                        <text x="20" y="55">45°G</text>
+                                        <text x="35" y="70">70°G</text>
+                                        <text x="50" y="80">Axe</text>
+                                        <text x="65" y="70">70°D</text>
+                                        <text x="80" y="55">45°D</text>
+                                        <text x="92" y="25">0°D</text>
+                                    </g>
+                                )}
+                            </svg>
+                            
+                            {displayShots.map((shot, idx) => (
+                                <div 
+                                    key={idx}
+                                    className={`absolute w-2.5 h-2.5 rounded-full transform -translate-x-1/2 -translate-y-1/2 border border-white shadow-lg ${shot.result === 'made' ? 'bg-green-500' : 'bg-red-500'}`}
+                                    style={{ left: `${shot.x}%`, top: `${shot.y}%`, opacity: 0.85 }}
+                                    title={`${shot.zone || ''} ${shot.distance || ''} - ${shot.result === 'made' ? 'Réussi' : 'Raté'}`}
+                                />
+                            ))}
+                            
+                            {displayShots.length === 0 && !generatedImage && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="text-center text-white/60 p-6">
+                                        <span className="text-5xl mb-3 block">📊</span>
+                                        <p className="font-bold">{mode === 'input' ? 'Cliquez pour ajouter des tirs' : 'Aucune donnée'}</p>
+                                        <p className="text-sm mt-1">{mode === 'analysis' ? 'Sélectionnez un joueur ou vérifiez Firebase' : ''}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {mode === 'analysis' && !generatedImage && displayShots.length > 0 && (
+                        <div className="mt-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100">
+                            <h4 className="font-bold text-indigo-800 text-sm mb-2">💡 Aperçu des {displayShots.length} tirs</h4>
+                            <p className="text-xs text-indigo-700">Cliquez sur "Générer Heatmap" ou "Générer Shot Chart" pour obtenir une visualisation professionnelle via l'API Python.</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
