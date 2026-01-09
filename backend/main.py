@@ -1,15 +1,15 @@
 """
 Shot Chart & Heatmap API - Backend FastAPI
+Compatible avec données Firebase (zones angulaires)
 Déploiement: Render/Railway
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal, Optional
 import matplotlib
-matplotlib.use('Agg')  # Backend non-interactif
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import seaborn as sns
@@ -20,26 +20,27 @@ import base64
 from datetime import datetime
 from collections import defaultdict
 
-app = FastAPI(title="Basketball Shot Chart API", version="1.0.0")
+app = FastAPI(title="Basketball Shot Chart API", version="2.0.0")
 
-# --- CORS Configuration ---
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En production, spécifier les domaines autorisés
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Stockage en mémoire (remplacer par DB en production) ---
+# --- Stockage en mémoire ---
 shots_db: dict[str, list] = defaultdict(list)
 
 # --- Modèles Pydantic ---
 class ShotInput(BaseModel):
-    x: float  # 0-100 (pourcentage largeur)
-    y: float  # 0-100 (pourcentage hauteur)
+    x: float
+    y: float
     result: Literal["made", "missed"]
     player_id: str
+    zone: Optional[str] = None
     distance: Optional[str] = "2pt"
     shot_type: Optional[str] = "arret"
     date: Optional[str] = None
@@ -52,48 +53,34 @@ class ShotResponse(BaseModel):
 class BulkShotsInput(BaseModel):
     shots: list[ShotInput]
 
-# --- Fonctions de dessin du terrain ---
-def draw_half_court(ax, line_color='white', court_color='#1a365d', line_width=2):
-    """Dessine un demi-terrain de basket aux dimensions standard"""
-    # Dimensions terrain (en pieds, échelle 0-100)
-    court_width, court_height = 50, 47
+# --- Dessin du terrain ---
+def draw_half_court(ax, line_color='white', court_color='#1a365d', lw=2):
+    """Dessine un demi-terrain de basket"""
+    W, H = 50, 47
     
-    # Fond du terrain
     ax.set_facecolor(court_color)
     
     # Rectangle extérieur
-    outer = patches.Rectangle((0, 0), court_width, court_height, 
-                               linewidth=line_width, edgecolor=line_color, facecolor=court_color)
-    ax.add_patch(outer)
+    ax.add_patch(patches.Rectangle((0, 0), W, H, lw=lw, ec=line_color, fc=court_color))
     
-    # Panier (cercle)
-    hoop = plt.Circle((25, 5.25), 0.75, linewidth=line_width, 
-                      edgecolor=line_color, facecolor='none')
-    ax.add_patch(hoop)
+    # Panier
+    ax.add_patch(plt.Circle((25, 5.25), 0.75, lw=lw, ec=line_color, fc='none'))
+    ax.plot([22, 28], [4, 4], lw=lw, color=line_color)
     
-    # Planche
-    ax.plot([22, 28], [4, 4], linewidth=line_width, color=line_color)
-    
-    # Zone restrictive (raquette)
-    paint = patches.Rectangle((17, 0), 16, 19, linewidth=line_width, 
-                               edgecolor=line_color, facecolor='none')
-    ax.add_patch(paint)
+    # Raquette
+    ax.add_patch(patches.Rectangle((17, 0), 16, 19, lw=lw, ec=line_color, fc='none'))
     
     # Cercle LF
-    ft_circle = patches.Arc((25, 19), 12, 12, theta1=0, theta2=180,
-                            linewidth=line_width, edgecolor=line_color)
-    ax.add_patch(ft_circle)
+    ax.add_patch(patches.Arc((25, 19), 12, 12, theta1=0, theta2=180, lw=lw, ec=line_color))
     
-    # Arc 3 points
-    three_arc = patches.Arc((25, 5.25), 47.5, 47.5, theta1=22, theta2=158,
-                            linewidth=line_width, edgecolor=line_color)
-    ax.add_patch(three_arc)
+    # Arc 3pts
+    ax.add_patch(patches.Arc((25, 5.25), 47.5, 47.5, theta1=22, theta2=158, lw=lw, ec=line_color))
+    ax.plot([3, 3], [0, 14], lw=lw, color=line_color)
+    ax.plot([47, 47], [0, 14], lw=lw, color=line_color)
     
-    # Lignes corners 3pts
-    ax.plot([3, 3], [0, 14], linewidth=line_width, color=line_color)
-    ax.plot([47, 47], [0, 14], linewidth=line_width, color=line_color)
+    # Zone restrictive
+    ax.add_patch(patches.Rectangle((19, 0), 12, 8, lw=1, ec=line_color, fc='none', ls='--'))
     
-    # Configuration axes
     ax.set_xlim(-2, 52)
     ax.set_ylim(-2, 49)
     ax.set_aspect('equal')
@@ -101,54 +88,65 @@ def draw_half_court(ax, line_color='white', court_color='#1a365d', line_width=2)
     
     return ax
 
-def convert_coords(x_pct, y_pct):
-    """Convertit les coordonnées pourcentage en coordonnées terrain"""
-    court_x = (x_pct / 100) * 50
-    court_y = (y_pct / 100) * 47
-    return court_x, court_y
+def convert_pct_to_court(x_pct, y_pct):
+    """Convertit pourcentage (0-100) en coordonnées terrain (0-50, 0-47)"""
+    return (x_pct / 100) * 50, (y_pct / 100) * 47
 
-# --- Endpoints API ---
+# --- Endpoints ---
 @app.get("/")
 async def root():
-    return {"status": "online", "api": "Basketball Shot Chart", "version": "1.0.0"}
+    return {"status": "online", "api": "Basketball Shot Chart", "version": "2.0.0"}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
 
 @app.post("/api/shot", response_model=ShotResponse)
 async def add_shot(shot: ShotInput):
     """Enregistre un tir"""
+    cx, cy = convert_pct_to_court(shot.x, shot.y)
+    
     shot_data = {
         "x": shot.x,
         "y": shot.y,
+        "court_x": cx,
+        "court_y": cy,
         "result": shot.result,
+        "zone": shot.zone,
         "distance": shot.distance,
-        "shot_type": shot_type,
-        "date": shot.date or datetime.now().isoformat(),
-        "court_x": convert_coords(shot.x, shot.y)[0],
-        "court_y": convert_coords(shot.x, shot.y)[1]
+        "shot_type": shot.shot_type,
+        "date": shot.date or datetime.now().strftime("%Y-%m-%d"),
+        "player_id": shot.player_id
     }
     
     shots_db[shot.player_id].append(shot_data)
     
     return ShotResponse(
         success=True,
-        message=f"Tir enregistré pour {shot.player_id}",
+        message=f"Tir enregistré pour joueur {shot.player_id}",
         total_shots=len(shots_db[shot.player_id])
     )
 
 @app.post("/api/shots/bulk", response_model=ShotResponse)
 async def add_bulk_shots(data: BulkShotsInput):
-    """Enregistre plusieurs tirs en une fois"""
+    """Enregistre plusieurs tirs"""
     count = 0
     for shot in data.shots:
+        cx, cy = convert_pct_to_court(shot.x, shot.y)
+        
         shot_data = {
             "x": shot.x,
             "y": shot.y,
+            "court_x": cx,
+            "court_y": cy,
             "result": shot.result,
+            "zone": shot.zone,
             "distance": shot.distance,
             "shot_type": shot.shot_type,
-            "date": shot.date or datetime.now().isoformat(),
-            "court_x": convert_coords(shot.x, shot.y)[0],
-            "court_y": convert_coords(shot.x, shot.y)[1]
+            "date": shot.date or datetime.now().strftime("%Y-%m-%d"),
+            "player_id": shot.player_id
         }
+        
         shots_db[shot.player_id].append(shot_data)
         count += 1
     
@@ -156,7 +154,7 @@ async def add_bulk_shots(data: BulkShotsInput):
 
 @app.get("/api/shots/{player_id}")
 async def get_shots(player_id: str):
-    """Récupère tous les tirs d'un joueur"""
+    """Récupère les tirs d'un joueur ou de l'équipe"""
     if player_id == "team":
         all_shots = []
         for pid, shots in shots_db.items():
@@ -172,7 +170,7 @@ async def get_shots(player_id: str):
 
 @app.delete("/api/shots/{player_id}")
 async def clear_shots(player_id: str):
-    """Supprime tous les tirs d'un joueur"""
+    """Supprime les tirs"""
     if player_id == "team":
         shots_db.clear()
         return {"success": True, "message": "Tous les tirs supprimés"}
@@ -184,8 +182,8 @@ async def clear_shots(player_id: str):
 @app.get("/api/heatmap/{player_id}")
 async def generate_heatmap(
     player_id: str,
-    result_filter: Optional[str] = None,  # "made", "missed", ou None pour tous
-    opacity: float = 0.6
+    result_filter: Optional[str] = None,
+    opacity: float = 0.65
 ):
     """Génère une heatmap des tirs"""
     
@@ -200,21 +198,20 @@ async def generate_heatmap(
     if not shots:
         raise HTTPException(status_code=404, detail="Aucun tir trouvé")
     
-    # Filtrer par résultat si spécifié
-    if result_filter:
+    # Filtrer
+    if result_filter and result_filter in ["made", "missed"]:
         shots = [s for s in shots if s["result"] == result_filter]
         if not shots:
             raise HTTPException(status_code=404, detail=f"Aucun tir '{result_filter}' trouvé")
     
-    # Créer DataFrame
     df = pd.DataFrame(shots)
     
     # Créer la figure
     fig, ax = plt.subplots(figsize=(10, 9.4))
     draw_half_court(ax)
     
-    # Générer la heatmap avec KDE
-    if len(df) >= 3:  # Minimum pour KDE
+    # Heatmap KDE
+    if len(df) >= 5:
         try:
             sns.kdeplot(
                 x=df['court_x'],
@@ -222,50 +219,46 @@ async def generate_heatmap(
                 cmap='YlOrRd',
                 fill=True,
                 alpha=opacity,
-                levels=15,
+                levels=20,
                 thresh=0.05,
+                bw_adjust=0.6,
                 ax=ax
             )
-        except Exception:
-            # Fallback si KDE échoue
-            ax.scatter(df['court_x'], df['court_y'], c='red', alpha=0.5, s=100)
+        except Exception as e:
+            # Fallback: scatter
+            colors = ['#22c55e' if r == 'made' else '#ef4444' for r in df['result']]
+            ax.scatter(df['court_x'], df['court_y'], c=colors, s=80, alpha=0.6, edgecolors='white')
     else:
-        # Pas assez de points pour KDE, afficher les points
         colors = ['#22c55e' if r == 'made' else '#ef4444' for r in df['result']]
         ax.scatter(df['court_x'], df['court_y'], c=colors, s=150, edgecolors='white', linewidth=2)
     
-    # Stats overlay
+    # Stats
     made = len([s for s in shots if s['result'] == 'made'])
     total = len(shots)
     pct = (made / total * 100) if total > 0 else 0
     
     title = "Équipe" if player_id == "team" else f"Joueur {player_id}"
-    ax.set_title(f"{title} - {made}/{total} ({pct:.1f}%)", 
+    filter_txt = f" ({result_filter})" if result_filter else ""
+    ax.set_title(f"{title}{filter_txt} - {made}/{total} ({pct:.1f}%)", 
                  fontsize=14, fontweight='bold', color='white', pad=10)
     
     plt.tight_layout()
     
-    # Encoder en base64
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format='png', dpi=150, bbox_inches='tight', 
-                facecolor='#1a365d', edgecolor='none')
-    buffer.seek(0)
-    img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+    # Encoder
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#1a365d')
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode('utf-8')
     plt.close(fig)
     
     return {
-        "image": f"data:image/png;base64,{img_base64}",
-        "stats": {
-            "total": total,
-            "made": made,
-            "missed": total - made,
-            "percentage": round(pct, 1)
-        }
+        "image": f"data:image/png;base64,{img_b64}",
+        "stats": {"total": total, "made": made, "missed": total - made, "percentage": round(pct, 1)}
     }
 
 @app.get("/api/shotchart/{player_id}")
 async def generate_shotchart(player_id: str, result_filter: Optional[str] = None):
-    """Génère un shot chart avec les points individuels"""
+    """Génère un shot chart avec points individuels"""
     
     if player_id == "team":
         shots = []
@@ -277,7 +270,7 @@ async def generate_shotchart(player_id: str, result_filter: Optional[str] = None
     if not shots:
         raise HTTPException(status_code=404, detail="Aucun tir trouvé")
     
-    if result_filter:
+    if result_filter and result_filter in ["made", "missed"]:
         shots = [s for s in shots if s["result"] == result_filter]
     
     df = pd.DataFrame(shots)
@@ -285,24 +278,24 @@ async def generate_shotchart(player_id: str, result_filter: Optional[str] = None
     fig, ax = plt.subplots(figsize=(10, 9.4))
     draw_half_court(ax)
     
-    # Points individuels
-    made_shots = df[df['result'] == 'made']
-    missed_shots = df[df['result'] == 'missed']
+    # Points
+    made_df = df[df['result'] == 'made']
+    miss_df = df[df['result'] == 'missed']
     
-    if not made_shots.empty:
-        ax.scatter(made_shots['court_x'], made_shots['court_y'], 
-                  c='#22c55e', s=120, marker='o', edgecolors='white', 
-                  linewidth=2, label='Réussis', zorder=5)
+    if not made_df.empty:
+        ax.scatter(made_df['court_x'], made_df['court_y'], 
+                  c='#22c55e', s=100, marker='o', edgecolors='white', 
+                  linewidth=2, label='Réussis', zorder=5, alpha=0.85)
     
-    if not missed_shots.empty:
-        ax.scatter(missed_shots['court_x'], missed_shots['court_y'], 
-                  c='#ef4444', s=120, marker='X', edgecolors='white', 
-                  linewidth=2, label='Ratés', zorder=5)
+    if not miss_df.empty:
+        ax.scatter(miss_df['court_x'], miss_df['court_y'], 
+                  c='#ef4444', s=100, marker='X', edgecolors='white', 
+                  linewidth=2, label='Ratés', zorder=5, alpha=0.85)
     
     ax.legend(loc='upper right', facecolor='#1a365d', edgecolor='white', 
               labelcolor='white', fontsize=10)
     
-    made = len(made_shots)
+    made = len(made_df)
     total = len(df)
     pct = (made / total * 100) if total > 0 else 0
     
@@ -312,21 +305,20 @@ async def generate_shotchart(player_id: str, result_filter: Optional[str] = None
     
     plt.tight_layout()
     
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format='png', dpi=150, bbox_inches='tight',
-                facecolor='#1a365d', edgecolor='none')
-    buffer.seek(0)
-    img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#1a365d')
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode('utf-8')
     plt.close(fig)
     
     return {
-        "image": f"data:image/png;base64,{img_base64}",
+        "image": f"data:image/png;base64,{img_b64}",
         "stats": {"total": total, "made": made, "missed": total - made, "percentage": round(pct, 1)}
     }
 
-@app.get("/api/stats/{player_id}")
-async def get_player_stats(player_id: str):
-    """Statistiques détaillées d'un joueur"""
+@app.get("/api/stats/zones/{player_id}")
+async def get_zone_stats(player_id: str):
+    """Stats par zone pour un joueur"""
     if player_id == "team":
         shots = []
         for pid, player_shots in shots_db.items():
@@ -335,40 +327,24 @@ async def get_player_stats(player_id: str):
         shots = shots_db.get(player_id, [])
     
     if not shots:
-        return {"player_id": player_id, "stats": None}
+        return {"player_id": player_id, "zones": {}}
     
-    total = len(shots)
-    made = len([s for s in shots if s['result'] == 'made'])
+    zones = defaultdict(lambda: {"made": 0, "total": 0})
     
-    # Stats par distance
-    by_distance = defaultdict(lambda: {"made": 0, "total": 0})
     for s in shots:
-        d = s.get('distance', '2pt')
-        by_distance[d]["total"] += 1
+        z = s.get('zone') or 'Autre'
+        zones[z]["total"] += 1
         if s['result'] == 'made':
-            by_distance[d]["made"] += 1
+            zones[z]["made"] += 1
     
-    # Stats par type
-    by_type = defaultdict(lambda: {"made": 0, "total": 0})
-    for s in shots:
-        t = s.get('shot_type', 'arret')
-        by_type[t]["total"] += 1
-        if s['result'] == 'made':
-            by_type[t]["made"] += 1
+    # Calculer pourcentages
+    for z in zones:
+        t = zones[z]["total"]
+        m = zones[z]["made"]
+        zones[z]["percentage"] = round((m / t * 100), 1) if t > 0 else 0
     
-    return {
-        "player_id": player_id,
-        "stats": {
-            "total": total,
-            "made": made,
-            "missed": total - made,
-            "percentage": round((made / total * 100), 1) if total > 0 else 0,
-            "by_distance": dict(by_distance),
-            "by_type": dict(by_type)
-        }
-    }
+    return {"player_id": player_id, "zones": dict(zones)}
 
-# --- Point d'entrée ---
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
