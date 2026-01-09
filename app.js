@@ -1,4 +1,5 @@
 // --- CONFIGURATION FIREBASE ---
+// v2
 const firebaseConfig = {
     apiKey: "AIzaSyBaA99che1oz9BHc23IhiFoY-nK0xvg4q4",
     authDomain: "statu18elite.firebaseapp.com",
