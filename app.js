@@ -259,12 +259,24 @@ function App() {
                 const doc = await docRef.get();
                 if(doc.exists) {
                     const d = doc.data();
-                    updateHistory(JSON.parse(d.history));
-                    updatePlayers(JSON.parse(d.players));
-                    alert("✅ Données chargées !");
+                    const loadedHistory = JSON.parse(d.history);
+                    const loadedPlayers = JSON.parse(d.players);
+                    
+                    // Debug logs
+                    console.log('📥 Données Firebase chargées:');
+                    console.log('  - Nombre d\'entrées:', loadedHistory.length);
+                    console.log('  - Premier élément:', loadedHistory[0]);
+                    console.log('  - Format détecté:', loadedHistory[0]?.zoneId ? 'NOUVEAU (plat)' : 'ANCIEN (zones imbriquées)');
+                    
+                    updateHistory(loadedHistory);
+                    updatePlayers(loadedPlayers);
+                    alert("✅ Données chargées ! (" + loadedHistory.length + " entrées)");
                 } else alert("Aucune sauvegarde trouvée.");
             }
-        } catch (e) { alert("Erreur: " + e.message); }
+        } catch (e) { 
+            console.error('Erreur Firebase:', e);
+            alert("Erreur: " + e.message); 
+        }
         setIsSyncing(false);
     };
 
@@ -410,6 +422,9 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
+    // Normaliser les données pour gérer les deux formats
+    const normalizedData = useMemo(() => convertOldToNewFormat(historyData), [historyData]);
+
     const calculateStats = () => {
         const initStat = () => ({ tt: 0, tr: 0 });
         const team = { zones: {}, types: { 'arret': initStat(), 'mouv': initStat() }, total: initStat() };
@@ -423,7 +438,7 @@ function AnalysisModule({ players, historyData, setHistoryData }) {
             playersStats[p.id].zones['lf'] = initStat();
         });
 
-        let filteredData = historyData;
+        let filteredData = normalizedData;
         if (startDate) filteredData = filteredData.filter(d => d.date >= startDate);
         if (endDate) filteredData = filteredData.filter(d => d.date <= endDate);
 
@@ -638,6 +653,9 @@ function ShotChartModule({ players, historyData }) {
     const [resultFilter, setResultFilter] = useState('all');
     const [distanceFilter, setDistanceFilter] = useState('all');
 
+    // Normaliser les données d'abord
+    const normalizedData = useMemo(() => convertOldToNewFormat(historyData), [historyData]);
+    
     const firebaseShots = useMemo(() => convertHistoryToShots(historyData, selectedPlayer), [historyData, selectedPlayer]);
 
     const filteredShots = useMemo(() => {
@@ -653,6 +671,11 @@ function ShotChartModule({ players, historyData }) {
         const made = filteredShots.filter(s => s.result === 'made').length;
         return { total, made, missed: total - made, percentage: total > 0 ? Math.round((made / total) * 1000) / 10 : 0 };
     }, [filteredShots]);
+
+    // Compteur de tirs par joueur
+    const getPlayerShotCount = (playerId) => {
+        return normalizedData.filter(r => r.playerId === playerId).reduce((acc, r) => acc + (r.tentes || 0), 0);
+    };
 
     const generateVisualization = async (type) => {
         setIsLoading(true);
@@ -689,10 +712,9 @@ function ShotChartModule({ players, historyData }) {
                         <span className="text-sm font-bold text-gray-500">Joueur:</span>
                         <select value={selectedPlayer} onChange={(e) => { setSelectedPlayer(e.target.value); setGeneratedImage(null); }} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 font-bold text-sm outline-none">
                             <option value="team">🏀 Équipe ({firebaseShots.length} tirs)</option>
-                            {players.map(p => {
-                                const count = historyData.filter(r => r.playerId === p.id).reduce((acc, r) => acc + (r.tentes || 0), 0);
-                                return <option key={p.id} value={p.id.toString()}>{p.name} ({count})</option>
-                            })}
+                            {players.map(p => (
+                                <option key={p.id} value={p.id.toString()}>{p.name} ({getPlayerShotCount(p.id)})</option>
+                            ))}
                         </select>
                     </div>
                     
