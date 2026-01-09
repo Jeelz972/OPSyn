@@ -26,7 +26,7 @@ if (typeof firebase !== 'undefined' && !firebase.apps.length) {
 }
 
 // --- CONFIGURATION API SHOT CHART ---
-const API_BASE_URL = 'https://votre-api.onrender.com';
+const API_BASE_URL = 'https://opsyn.onrender.com';
 
 const { useState, useEffect, useMemo, useRef } = React;
 
